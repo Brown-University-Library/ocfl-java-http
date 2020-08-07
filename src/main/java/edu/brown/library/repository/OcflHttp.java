@@ -6,8 +6,13 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import javax.json.Json;
+import javax.json.JsonObject;
 
 public class OcflHttp extends AbstractHandler {
+
+    JsonObject getRootOutput() {
+        return Json.createObjectBuilder().add("OCFL ROOT", "/tmp").build();
+    }
 
     public void handle(String target,
                        Request baseRequest,
@@ -20,7 +25,7 @@ public class OcflHttp extends AbstractHandler {
             response.setContentType("text/html;charset=utf-8");
             response.setStatus(HttpServletResponse.SC_OK);
             baseRequest.setHandled(true);
-            var output = Json.createObjectBuilder().add("OCFL ROOT", "/tmp").build();
+            var output = getRootOutput();
             var writer = Json.createWriter(response.getWriter());
             writer.writeObject(output);
         }
