@@ -11,6 +11,8 @@
     <properties>
         <maven.compiler.source>11</maven.compiler.source>
         <maven.compiler.target>11</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <!-- https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-maven-plugin/ -->
         <jettyVersion>9.4.31.v20200723</jettyVersion>
     </properties>
