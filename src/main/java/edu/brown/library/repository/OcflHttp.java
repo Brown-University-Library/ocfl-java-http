@@ -4,8 +4,8 @@ import org.eclipse.jetty.server.handler.AbstractHandler;
 import org.eclipse.jetty.server.Request;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import javax.servlet.ServletException;
 import java.io.IOException;
+import javax.json.Json;
 
 public class OcflHttp extends AbstractHandler {
 
@@ -15,10 +15,19 @@ public class OcflHttp extends AbstractHandler {
                        HttpServletResponse response)
             throws IOException
     {
-        response.setContentType("text/html;charset=utf-8");
-        response.setStatus(HttpServletResponse.SC_OK);
-        baseRequest.setHandled(true);
-        response.getWriter().println("<h1>Hello World</h1>");
+        var pathInfo = request.getPathInfo();
+        if (pathInfo.equals("/")) {
+            response.setContentType("text/html;charset=utf-8");
+            response.setStatus(HttpServletResponse.SC_OK);
+            baseRequest.setHandled(true);
+            var output = Json.createObjectBuilder().add("OCFL ROOT", "/tmp").build();
+            var writer = Json.createWriter(response.getWriter());
+            writer.writeObject(output);
+        }
+        else {
+            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            baseRequest.setHandled(true);
+        }
     }
 
     public static void main(String[] args) throws Exception {
