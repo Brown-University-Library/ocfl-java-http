@@ -9,6 +9,6 @@ public class OcflHttpTest {
     public void testRoot() {
         var handler = new OcflHttp();
         var output = handler.getRootOutput();
-        assert output.toString().equals("{\"ROOT\":\"/tmp\"}");
+        assert output.toString().equals("{\"OCFL ROOT\":\"/tmp\"}");
     }
 }
