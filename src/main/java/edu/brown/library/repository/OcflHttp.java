@@ -7,6 +7,7 @@ import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import javax.json.Json;
 import javax.json.JsonObject;
+import java.nio.file.Path;
 import java.util.regex.Pattern;
 
 public class OcflHttp extends AbstractHandler {
@@ -14,8 +15,16 @@ public class OcflHttp extends AbstractHandler {
     final Pattern ObjectIdPathPattern = Pattern.compile("^/([a-zA-Z:]+)/([a-zA-Z:]+)$");
     final Pattern ObjectIdPattern = Pattern.compile("^/([a-zA-Z:]+)$");
 
+    Path repoRoot;
+
+    public OcflHttp(Path root) {
+        repoRoot = root;
+    }
+
     JsonObject getRootOutput() {
-        return Json.createObjectBuilder().add("OCFL ROOT", "/tmp").build();
+        return Json.createObjectBuilder()
+                .add("OCFL ROOT", repoRoot.toString())
+                .build();
     }
 
     void handleRoot(HttpServletResponse response) throws IOException {
@@ -76,7 +85,7 @@ public class OcflHttp extends AbstractHandler {
 
     public static void main(String[] args) throws Exception {
         Server server = new Server(8000);
-        server.setHandler(new OcflHttp());
+        server.setHandler(new OcflHttp(Path.of("/tmp/ocfl-java-http")));
         server.start();
         server.join();
     }
