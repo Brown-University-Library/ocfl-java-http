@@ -1,9 +1,15 @@
 package edu.brown.library.repository;
 
+import java.io.IOException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.URI;
 import java.net.http.HttpResponse;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 
 import org.eclipse.jetty.server.Server;
 import org.junit.jupiter.api.Test;
@@ -15,17 +21,45 @@ import org.junit.jupiter.api.Assertions;
 public class OcflHttpTest {
 
     Server server;
+    Path tmpRoot;
+
+    private void deleteDirectory(Path dir) throws IOException {
+        //https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/nio/file/FileVisitor.html
+        Files.walkFileTree(tmpRoot, new SimpleFileVisitor<Path>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
+                    throws IOException
+            {
+                Files.delete(file);
+                return FileVisitResult.CONTINUE;
+            }
+            @Override
+            public FileVisitResult postVisitDirectory(Path dir, IOException e)
+                    throws IOException
+            {
+                if (e == null) {
+                    Files.delete(dir);
+                    return FileVisitResult.CONTINUE;
+                } else {
+                    //directory iteration failed
+                    throw e;
+                }
+            }
+        });
+    }
 
     @BeforeEach
     private void setupServer() throws Exception {
+        tmpRoot = Files.createTempDirectory("ocfl-java-http");
         server = new Server(8000);
-        server.setHandler(new OcflHttp());
+        server.setHandler(new OcflHttp(tmpRoot));
         server.start();
     }
 
     @AfterEach
     private void stopServer() throws Exception {
         server.stop();
+        deleteDirectory(tmpRoot);
     }
 
     @Test
@@ -36,7 +70,7 @@ public class OcflHttpTest {
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
         var body = response.body();
-        Assertions.assertEquals("{\"OCFL ROOT\":\"/tmp\"}", body);
+        Assertions.assertEquals("{\"OCFL ROOT\":\"" + tmpRoot + "\"}", body);
     }
 
     @Test
