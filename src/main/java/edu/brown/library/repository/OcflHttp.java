@@ -1,4 +1,7 @@
 package edu.brown.library.repository;
+import edu.wisc.library.ocfl.api.OcflRepository;
+import edu.wisc.library.ocfl.api.model.FileDetails;
+import edu.wisc.library.ocfl.api.model.VersionInfo;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.AbstractHandler;
 import org.eclipse.jetty.server.Request;
@@ -7,18 +10,38 @@ import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import javax.json.Json;
 import javax.json.JsonObject;
+import java.io.InputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.regex.Pattern;
+import edu.wisc.library.ocfl.api.OcflRepository;
+import edu.wisc.library.ocfl.core.OcflRepositoryBuilder;
+import edu.wisc.library.ocfl.core.extension.storage.layout.config.HashedTruncatedNTupleIdConfig;
+import edu.wisc.library.ocfl.core.storage.filesystem.FileSystemOcflStorage;
+import edu.wisc.library.ocfl.api.model.ObjectVersionId;
 
 public class OcflHttp extends AbstractHandler {
 
-    final Pattern ObjectIdPathPattern = Pattern.compile("^/([a-zA-Z:]+)/([a-zA-Z:]+)$");
-    final Pattern ObjectIdPattern = Pattern.compile("^/([a-zA-Z:]+)$");
+    final Pattern ObjectIdPathPattern = Pattern.compile("^/([a-zA-Z0-9:]+)/([a-zA-Z0-9:]+)$");
+    final Pattern ObjectIdPattern = Pattern.compile("^/([a-zA-Z0-9:]+)$");
 
-    Path repoRoot;
+    private Path repoRoot;
+    private OcflRepository repo;
 
-    public OcflHttp(Path root) {
+    public OcflHttp(Path root, Path workDir) throws Exception {
         repoRoot = root;
+        repo = new OcflRepositoryBuilder()
+                .layoutConfig(new HashedTruncatedNTupleIdConfig())
+                .storage(FileSystemOcflStorage.builder().repositoryRoot(repoRoot).build())
+                .workDir(workDir)
+                .build();
+    }
+
+    void writeFileToObject(String objectId, InputStream content, String path, VersionInfo versionInfo)
+    {
+        repo.updateObject(ObjectVersionId.head(objectId), versionInfo, updater -> {
+                    updater.writeFile(content, path);
+                });
     }
 
     JsonObject getRootOutput() {
@@ -48,8 +71,19 @@ public class OcflHttp extends AbstractHandler {
                       String objectId)
         throws IOException
     {
+        var version = repo.describeVersion(ObjectVersionId.head(objectId));
+        var files = version.getFiles();
+        var emptyOutput = Json.createObjectBuilder();
+        var filesOutput = Json.createObjectBuilder();
+        for (FileDetails f: files) {
+            filesOutput.add(f.getPath(), emptyOutput);
+        }
+        var output = Json.createObjectBuilder()
+                .add("files", filesOutput)
+                .build();
         response.setStatus(HttpServletResponse.SC_OK);
-        response.getWriter().println("objectId: " + objectId);
+        var writer = Json.createWriter(response.getWriter());
+        writer.writeObject(output);
     }
 
     public void handle(String target,
@@ -85,7 +119,11 @@ public class OcflHttp extends AbstractHandler {
 
     public static void main(String[] args) throws Exception {
         Server server = new Server(8000);
-        server.setHandler(new OcflHttp(Path.of("/tmp/ocfl-java-http")));
+        var ocflHttp = new OcflHttp(
+                Path.of("/tmp/ocfl-java-http"),
+                Files.createTempDirectory("ocfl-work")
+        );
+        server.setHandler(ocflHttp);
         server.start();
         server.join();
     }
