@@ -1,20 +1,20 @@
 package edu.brown.library.repository;
-import edu.wisc.library.ocfl.api.OcflRepository;
-import edu.wisc.library.ocfl.api.model.FileDetails;
-import edu.wisc.library.ocfl.api.model.VersionInfo;
-import org.eclipse.jetty.server.Server;
-import org.eclipse.jetty.server.handler.AbstractHandler;
-import org.eclipse.jetty.server.Request;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+
 import java.io.IOException;
-import javax.json.Json;
-import javax.json.JsonObject;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.regex.Pattern;
+import javax.json.Json;
+import javax.json.JsonObject;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.server.handler.AbstractHandler;
+import org.eclipse.jetty.server.Request;
 import edu.wisc.library.ocfl.api.OcflRepository;
+import edu.wisc.library.ocfl.api.model.FileDetails;
+import edu.wisc.library.ocfl.api.model.VersionInfo;
 import edu.wisc.library.ocfl.core.OcflRepositoryBuilder;
 import edu.wisc.library.ocfl.core.extension.storage.layout.config.HashedTruncatedNTupleIdConfig;
 import edu.wisc.library.ocfl.core.storage.filesystem.FileSystemOcflStorage;
@@ -26,7 +26,7 @@ public class OcflHttp extends AbstractHandler {
     final Pattern ObjectIdPattern = Pattern.compile("^/([a-zA-Z0-9:]+)$");
 
     private Path repoRoot;
-    private OcflRepository repo;
+    OcflRepository repo;
 
     public OcflHttp(Path root, Path workDir) throws Exception {
         repoRoot = root;
@@ -58,13 +58,20 @@ public class OcflHttp extends AbstractHandler {
         writer.writeObject(output);
     }
 
-    void handleObjectPath(HttpServletResponse response,
+    void handleObjectPath(HttpServletRequest request,
+                          HttpServletResponse response,
                           String objectId,
                           String path)
             throws IOException
     {
-        response.setStatus(HttpServletResponse.SC_OK);
-        response.getWriter().println("objectId: " + objectId + "; path: " + path);
+        if(request.getMethod().equals("POST")) {
+            writeFileToObject(objectId, request.getInputStream(), path, new VersionInfo());
+            response.setStatus(HttpServletResponse.SC_CREATED);
+        }
+        else {
+            response.setStatus(HttpServletResponse.SC_OK);
+            response.getWriter().println("objectId: " + objectId + "; path: " + path);
+        }
     }
 
     void handleObject(HttpServletResponse response,
@@ -107,7 +114,7 @@ public class OcflHttp extends AbstractHandler {
             if (matcher.matches()) {
                 var objectId = matcher.group(1);
                 var path = matcher.group(2);
-                handleObjectPath(response, objectId, path);
+                handleObjectPath(request, response, objectId, path);
             }
             else {
                 var objectIdMatcher = ObjectIdPattern.matcher(pathInfo);

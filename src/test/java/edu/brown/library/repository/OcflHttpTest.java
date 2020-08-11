@@ -1,7 +1,6 @@
 package edu.brown.library.repository;
 
 import java.io.IOException;
-import java.io.StringReader;
 import java.io.ByteArrayInputStream;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -14,15 +13,13 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 
+import edu.wisc.library.ocfl.api.model.ObjectVersionId;
 import edu.wisc.library.ocfl.api.model.VersionInfo;
 import org.eclipse.jetty.server.Server;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
-
-import javax.json.Json;
-import javax.json.JsonObject;
 
 
 public class OcflHttpTest {
@@ -31,6 +28,7 @@ public class OcflHttpTest {
     OcflHttp ocflHttp;
     Path tmpRoot;
     Path workDir;
+    HttpClient client;
 
     private void deleteDirectory(Path dir) throws IOException {
         //https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/nio/file/FileVisitor.html
@@ -65,6 +63,7 @@ public class OcflHttpTest {
         server = new Server(8000);
         server.setHandler(ocflHttp);
         server.start();
+        client = HttpClient.newHttpClient();
     }
 
     @AfterEach
@@ -77,7 +76,6 @@ public class OcflHttpTest {
     @Test
     public void testBasicUrls() throws Exception {
         var url = "http://localhost:8000/";
-        var client = HttpClient.newHttpClient();
         var request = HttpRequest.newBuilder(URI.create(url)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
@@ -98,7 +96,6 @@ public class OcflHttpTest {
                 "file1",
                 new VersionInfo());
         var url = "http://localhost:8000/testsuite:1";
-        var client = HttpClient.newHttpClient();
         var request = HttpRequest.newBuilder(URI.create(url)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
@@ -111,5 +108,19 @@ public class OcflHttpTest {
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(404, response.statusCode());
         Assertions.assertEquals("object testsuite:notfound not found", response.body());
+    }
+
+    @Test
+    public void testUploadFile() throws Exception {
+        var objectId = "testsuite:1";
+        var uri = URI.create("http://localhost:8000/" + objectId + "/file1");
+        var request = HttpRequest.newBuilder(uri)
+                .POST(HttpRequest.BodyPublishers.ofString("content")).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(201, response.statusCode());
+        var object = ocflHttp.repo.getObject(ObjectVersionId.head(objectId));
+        try (var stream = object.getFile("file1").getStream()) {
+            Assertions.assertEquals("content", new String(stream.readAllBytes()));
+        }
     }
 }
