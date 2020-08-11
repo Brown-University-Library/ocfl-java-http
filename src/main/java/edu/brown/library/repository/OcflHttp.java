@@ -71,19 +71,25 @@ public class OcflHttp extends AbstractHandler {
                       String objectId)
         throws IOException
     {
-        var version = repo.describeVersion(ObjectVersionId.head(objectId));
-        var files = version.getFiles();
-        var emptyOutput = Json.createObjectBuilder();
-        var filesOutput = Json.createObjectBuilder();
-        for (FileDetails f: files) {
-            filesOutput.add(f.getPath(), emptyOutput);
+        if(repo.containsObject(objectId)) {
+            var version = repo.describeVersion(ObjectVersionId.head(objectId));
+            var files = version.getFiles();
+            var emptyOutput = Json.createObjectBuilder();
+            var filesOutput = Json.createObjectBuilder();
+            for (FileDetails f : files) {
+                filesOutput.add(f.getPath(), emptyOutput);
+            }
+            var output = Json.createObjectBuilder()
+                    .add("files", filesOutput)
+                    .build();
+            response.setStatus(HttpServletResponse.SC_OK);
+            var writer = Json.createWriter(response.getWriter());
+            writer.writeObject(output);
         }
-        var output = Json.createObjectBuilder()
-                .add("files", filesOutput)
-                .build();
-        response.setStatus(HttpServletResponse.SC_OK);
-        var writer = Json.createWriter(response.getWriter());
-        writer.writeObject(output);
+        else {
+            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            response.getWriter().print("object " + objectId + " not found");
+        }
     }
 
     public void handle(String target,

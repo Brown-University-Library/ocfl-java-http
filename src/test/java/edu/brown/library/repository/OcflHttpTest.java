@@ -75,7 +75,7 @@ public class OcflHttpTest {
     }
 
     @Test
-    public void testRoot() throws Exception {
+    public void testBasicUrls() throws Exception {
         var url = "http://localhost:8000/";
         var client = HttpClient.newHttpClient();
         var request = HttpRequest.newBuilder(URI.create(url)).build();
@@ -83,14 +83,11 @@ public class OcflHttpTest {
         Assertions.assertEquals(200, response.statusCode());
         var body = response.body();
         Assertions.assertEquals("{\"OCFL ROOT\":\"" + tmpRoot + "\"}", body);
-    }
 
-    @Test
-    public void testNotFound() throws Exception {
-        var url = "http://localhost:8000/not-found";
-        var client = HttpClient.newHttpClient();
-        var request = HttpRequest.newBuilder(URI.create(url)).build();
-        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        //test unhandled/not found url
+        url = "http://localhost:8000/not-found";
+        request = HttpRequest.newBuilder(URI.create(url)).build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(404, response.statusCode());
     }
 
@@ -107,5 +104,12 @@ public class OcflHttpTest {
         Assertions.assertEquals(200, response.statusCode());
         var body = response.body();
         Assertions.assertEquals("{\"files\":{\"file1\":{}}}", body);
+
+        //now test object that doesn't exist
+        url = "http://localhost:8000/testsuite:notfound";
+        request = HttpRequest.newBuilder(URI.create(url)).build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(404, response.statusCode());
+        Assertions.assertEquals("object testsuite:notfound not found", response.body());
     }
 }
