@@ -79,13 +79,20 @@ public class OcflHttp extends AbstractHandler {
                 response.setStatus(HttpServletResponse.SC_CREATED);
             } catch(OverwriteException e) {
                 response.setStatus(HttpServletResponse.SC_CONFLICT);
-                response.getWriter().print(objectId + "/" + path + " already exists. Use PUT to overwrite.");
+                response.getWriter().print(objectId + "/" + path + " already exists. Use PUT to overwrite it.");
             }
         }
         else {
             if(request.getMethod().equals("PUT")) {
-                writeFileToObject(objectId, request.getInputStream(), path, new VersionInfo(), true);
-                response.setStatus(HttpServletResponse.SC_CREATED);
+                var object = repo.getObject(ObjectVersionId.head(objectId));
+                if(object.containsFile(path)) {
+                    writeFileToObject(objectId, request.getInputStream(), path, new VersionInfo(), true);
+                    response.setStatus(HttpServletResponse.SC_CREATED);
+                }
+                else {
+                    response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                    response.getWriter().print(objectId + "/" + path + " doesn't exist. Use POST to create it.");
+                }
             }
             else {
                 response.setStatus(HttpServletResponse.SC_OK);
