@@ -94,7 +94,7 @@ public class OcflHttpTest {
         ocflHttp.writeFileToObject("testsuite:1",
                 new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)),
                 "file1",
-                new VersionInfo());
+                new VersionInfo(), false);
         var url = "http://localhost:8000/testsuite:1";
         var request = HttpRequest.newBuilder(URI.create(url)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
@@ -122,11 +122,22 @@ public class OcflHttpTest {
         try (var stream = object.getFile("file1").getStream()) {
             Assertions.assertEquals("content", new String(stream.readAllBytes()));
         }
-        //now verify that a post to an existing file fails
+
+        //now verify that a POST to an existing file fails
         request = HttpRequest.newBuilder(uri)
                 .POST(HttpRequest.BodyPublishers.ofString("content update")).build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(409, response.statusCode());
         Assertions.assertEquals("testsuite:1/file1 already exists. Use PUT to overwrite.", response.body());
+
+        //now test that a PUT to an existing file succeeds
+        request = HttpRequest.newBuilder(uri)
+                .PUT(HttpRequest.BodyPublishers.ofString("content update")).build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(201, response.statusCode());
+        object = ocflHttp.repo.getObject(ObjectVersionId.head(objectId));
+        try (var stream = object.getFile("file1").getStream()) {
+            Assertions.assertEquals("content update", new String(stream.readAllBytes()));
+        }
     }
 }

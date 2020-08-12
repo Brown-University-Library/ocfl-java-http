@@ -22,6 +22,8 @@ import edu.wisc.library.ocfl.core.storage.filesystem.FileSystemOcflStorage;
 import edu.wisc.library.ocfl.api.model.ObjectVersionId;
 import edu.wisc.library.ocfl.api.exception.OverwriteException;
 
+import static edu.wisc.library.ocfl.api.OcflOption.OVERWRITE;
+
 public class OcflHttp extends AbstractHandler {
 
     final Pattern ObjectIdPathPattern = Pattern.compile("^/([a-zA-Z0-9:]+)/([a-zA-Z0-9:]+)$");
@@ -39,10 +41,15 @@ public class OcflHttp extends AbstractHandler {
                 .build();
     }
 
-    void writeFileToObject(String objectId, InputStream content, String path, VersionInfo versionInfo)
+    void writeFileToObject(String objectId, InputStream content, String path, VersionInfo versionInfo, boolean overwrite)
     {
         repo.updateObject(ObjectVersionId.head(objectId), versionInfo, updater -> {
-                    updater.writeFile(content, path);
+                    if(overwrite) {
+                        updater.writeFile(content, path, OVERWRITE);
+                    }
+                    else {
+                        updater.writeFile(content, path);
+                    }
                 });
     }
 
@@ -68,7 +75,7 @@ public class OcflHttp extends AbstractHandler {
     {
         if(request.getMethod().equals("POST")) {
             try {
-                writeFileToObject(objectId, request.getInputStream(), path, new VersionInfo());
+                writeFileToObject(objectId, request.getInputStream(), path, new VersionInfo(), false);
                 response.setStatus(HttpServletResponse.SC_CREATED);
             } catch(OverwriteException e) {
                 response.setStatus(HttpServletResponse.SC_CONFLICT);
@@ -76,8 +83,14 @@ public class OcflHttp extends AbstractHandler {
             }
         }
         else {
-            response.setStatus(HttpServletResponse.SC_OK);
-            response.getWriter().println("objectId: " + objectId + "; path: " + path);
+            if(request.getMethod().equals("PUT")) {
+                writeFileToObject(objectId, request.getInputStream(), path, new VersionInfo(), true);
+                response.setStatus(HttpServletResponse.SC_CREATED);
+            }
+            else {
+                response.setStatus(HttpServletResponse.SC_OK);
+                response.getWriter().println("objectId: " + objectId + "; path: " + path);
+            }
         }
     }
 
