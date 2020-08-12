@@ -122,5 +122,11 @@ public class OcflHttpTest {
         try (var stream = object.getFile("file1").getStream()) {
             Assertions.assertEquals("content", new String(stream.readAllBytes()));
         }
+        //now verify that a post to an existing file fails
+        request = HttpRequest.newBuilder(uri)
+                .POST(HttpRequest.BodyPublishers.ofString("content update")).build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(409, response.statusCode());
+        Assertions.assertEquals("testsuite:1/file1 already exists. Use PUT to overwrite.", response.body());
     }
 }

@@ -9,6 +9,7 @@ import javax.json.Json;
 import javax.json.JsonObject;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.AbstractHandler;
 import org.eclipse.jetty.server.Request;
@@ -19,6 +20,7 @@ import edu.wisc.library.ocfl.core.OcflRepositoryBuilder;
 import edu.wisc.library.ocfl.core.extension.storage.layout.config.HashedTruncatedNTupleIdConfig;
 import edu.wisc.library.ocfl.core.storage.filesystem.FileSystemOcflStorage;
 import edu.wisc.library.ocfl.api.model.ObjectVersionId;
+import edu.wisc.library.ocfl.api.exception.OverwriteException;
 
 public class OcflHttp extends AbstractHandler {
 
@@ -65,8 +67,13 @@ public class OcflHttp extends AbstractHandler {
             throws IOException
     {
         if(request.getMethod().equals("POST")) {
-            writeFileToObject(objectId, request.getInputStream(), path, new VersionInfo());
-            response.setStatus(HttpServletResponse.SC_CREATED);
+            try {
+                writeFileToObject(objectId, request.getInputStream(), path, new VersionInfo());
+                response.setStatus(HttpServletResponse.SC_CREATED);
+            } catch(OverwriteException e) {
+                response.setStatus(HttpServletResponse.SC_CONFLICT);
+                response.getWriter().print(objectId + "/" + path + " already exists. Use PUT to overwrite.");
+            }
         }
         else {
             response.setStatus(HttpServletResponse.SC_OK);
