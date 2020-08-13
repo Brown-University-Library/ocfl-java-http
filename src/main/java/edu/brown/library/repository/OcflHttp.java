@@ -10,6 +10,7 @@ import javax.json.JsonObject;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import edu.wisc.library.ocfl.api.exception.NotFoundException;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.AbstractHandler;
 import org.eclipse.jetty.server.Request;
@@ -28,6 +29,7 @@ public class OcflHttp extends AbstractHandler {
 
     final Pattern ObjectIdPathPattern = Pattern.compile("^/([a-zA-Z0-9:]+)/([a-zA-Z0-9:]+)$");
     final Pattern ObjectIdPattern = Pattern.compile("^/([a-zA-Z0-9:]+)$");
+    final int ChunkSize = 1024;
 
     private Path repoRoot;
     OcflRepository repo;
@@ -83,20 +85,36 @@ public class OcflHttp extends AbstractHandler {
             }
         }
         else {
-            if(request.getMethod().equals("PUT")) {
+            try {
                 var object = repo.getObject(ObjectVersionId.head(objectId));
-                if(object.containsFile(path)) {
-                    writeFileToObject(objectId, request.getInputStream(), path, new VersionInfo(), true);
-                    response.setStatus(HttpServletResponse.SC_CREATED);
+                if(request.getMethod().equals("PUT")) {
+                    if(object.containsFile(path)) {
+                        writeFileToObject(objectId, request.getInputStream(), path, new VersionInfo(), true);
+                        response.setStatus(HttpServletResponse.SC_CREATED);
+                    }
+                    else {
+                        response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                        response.getWriter().print(objectId + "/" + path + " doesn't exist. Use POST to create it.");
+                    }
                 }
                 else {
-                    response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-                    response.getWriter().print(objectId + "/" + path + " doesn't exist. Use POST to create it.");
+                    if(request.getMethod().equals("GET")) {
+                        if(object.containsFile(path)) {
+                            response.setStatus(HttpServletResponse.SC_OK);
+                            var outputStream = response.getOutputStream();
+                            try (var stream = object.getFile(path).getStream()) {
+                                outputStream.write(stream.readAllBytes());
+                            }
+                        }
+                        else {
+                            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                            response.getWriter().print(objectId + "/" + path + " not found");
+                        }
+                    }
                 }
-            }
-            else {
-                response.setStatus(HttpServletResponse.SC_OK);
-                response.getWriter().println("objectId: " + objectId + "; path: " + path);
+            } catch(NotFoundException e) {
+                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                response.getWriter().print(objectId + " not found");
             }
         }
     }
