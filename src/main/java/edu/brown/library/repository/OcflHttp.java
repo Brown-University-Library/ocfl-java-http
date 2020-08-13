@@ -101,9 +101,18 @@ public class OcflHttp extends AbstractHandler {
                     if(request.getMethod().equals("GET")) {
                         if(object.containsFile(path)) {
                             response.setStatus(HttpServletResponse.SC_OK);
-                            var outputStream = response.getOutputStream();
-                            try (var stream = object.getFile(path).getStream()) {
-                                outputStream.write(stream.readAllBytes());
+                            try (var stream = object.getFile(path).getStream().enableFixityCheck(false)) {
+                                try (var outputStream = response.getOutputStream()) {
+                                    byte[] bytesRead;
+                                    while (true) {
+                                        bytesRead = stream.readNBytes(ChunkSize);
+                                        if (bytesRead.length > 0) {
+                                            outputStream.write(bytesRead);
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                }
                             }
                         }
                         else {
