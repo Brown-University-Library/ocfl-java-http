@@ -93,8 +93,7 @@ public class OcflHttpTest {
     public void testShowObject() throws Exception {
         ocflHttp.writeFileToObject("testsuite:1",
                 new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)),
-                "file1",
-                new VersionInfo(), false);
+                "file1", new VersionInfo(), false);
         var url = "http://localhost:8000/testsuite:1";
         var request = HttpRequest.newBuilder(URI.create(url)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
@@ -108,6 +107,30 @@ public class OcflHttpTest {
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(404, response.statusCode());
         Assertions.assertEquals("object testsuite:notfound not found", response.body());
+    }
+
+    @Test
+    public void testGetFile() throws Exception {
+        var objectId = "testsuite:1";
+        //test non-existent object
+        var uri = URI.create("http://localhost:8000/" + objectId + "/file1");
+        var request = HttpRequest.newBuilder(uri).GET().build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(404, response.statusCode());
+        Assertions.assertEquals("testsuite:1 not found", response.body());
+        //now test object exists, but missing file
+        ocflHttp.writeFileToObject(objectId,
+                new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)),
+                "afile", new VersionInfo(), false);
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(404, response.statusCode());
+        Assertions.assertEquals("testsuite:1/file1 not found", response.body());
+        //now test success
+        uri = URI.create("http://localhost:8000/" + objectId + "/afile");
+        request = HttpRequest.newBuilder(uri).GET().build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(200, response.statusCode());
+        Assertions.assertEquals("data", response.body());
     }
 
     @Test
