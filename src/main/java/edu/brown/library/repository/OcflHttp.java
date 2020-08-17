@@ -185,9 +185,21 @@ public class OcflHttp extends AbstractHandler {
     }
 
     public static void main(String[] args) throws Exception {
-        Server server = new Server(8000);
+        var port = 8000;
+        var tmp = System.getProperty("java.io.tmpdir");
+        var repoRootDir = Path.of(tmp).resolve("ocfl-java-http");
+        if(args.length == 1) {
+            var pathToConfigFile = args[0];
+            try(InputStream is = Files.newInputStream(Path.of(pathToConfigFile))) {
+                var reader = Json.createReader(is);
+                var object = reader.readObject();
+                repoRootDir = Path.of(object.getString("OCFL-ROOT"));
+                port = object.getInt("PORT");
+            }
+        }
+        Server server = new Server(port);
         var ocflHttp = new OcflHttp(
-                Path.of("/tmp/ocfl-java-http"),
+                repoRootDir,
                 Files.createTempDirectory("ocfl-work")
         );
         server.setHandler(ocflHttp);
