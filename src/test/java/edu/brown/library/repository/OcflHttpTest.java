@@ -148,7 +148,7 @@ public class OcflHttpTest {
     @Test
     public void testUploadFile() throws Exception {
         var objectId = "testsuite:1";
-        var uri = URI.create("http://localhost:8000/" + objectId + "/file1");
+        var uri = URI.create("http://localhost:8000/" + objectId + "/file1?message=adding%20file1&username=someone&useraddress=someone%40school.edu");
         var request = HttpRequest.newBuilder(uri)
                 .POST(HttpRequest.BodyPublishers.ofString("content")).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
@@ -157,6 +157,10 @@ public class OcflHttpTest {
         try (var stream = object.getFile("file1").getStream()) {
             Assertions.assertEquals("content", new String(stream.readAllBytes()));
         }
+        Assertions.assertEquals("adding file1", object.getVersionInfo().getMessage());
+        var user = object.getVersionInfo().getUser();
+        Assertions.assertEquals("someone", user.getName());
+        Assertions.assertEquals("someone@school.edu", user.getAddress());
 
         //now verify that a POST to an existing file fails
         request = HttpRequest.newBuilder(uri)

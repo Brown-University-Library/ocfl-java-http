@@ -11,6 +11,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import edu.wisc.library.ocfl.api.exception.NotFoundException;
+import edu.wisc.library.ocfl.api.model.User;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.AbstractHandler;
 import org.eclipse.jetty.server.Request;
@@ -77,7 +78,23 @@ public class OcflHttp extends AbstractHandler {
     {
         if(request.getMethod().equals("POST")) {
             try {
-                writeFileToObject(objectId, request.getInputStream(), path, new VersionInfo(), false);
+                var versionInfo = new VersionInfo();
+                var params = request.getParameterMap();
+                var messageParam = params.get("message");
+                if(messageParam.length > 0) {
+                    versionInfo.setMessage(messageParam[0]);
+                }
+                var userNameParam = params.get("username");
+                if(userNameParam.length > 0) {
+                    var userName = userNameParam[0];
+                    var userAddressParam = params.get("useraddress");
+                    var userAddress = "";
+                    if(userAddressParam.length > 0) {
+                        userAddress = userAddressParam[0];
+                    }
+                    versionInfo.setUser(userName, userAddress);
+                }
+                writeFileToObject(objectId, request.getInputStream(), path, versionInfo, false);
                 response.setStatus(HttpServletResponse.SC_CREATED);
             } catch(OverwriteException e) {
                 response.setStatus(HttpServletResponse.SC_CONFLICT);
