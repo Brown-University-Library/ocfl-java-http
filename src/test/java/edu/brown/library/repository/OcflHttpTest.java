@@ -130,6 +130,8 @@ public class OcflHttpTest {
         request = HttpRequest.newBuilder(uri).GET().build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
+        Assertions.assertEquals("4", response.headers().firstValue("Content-Length").get());
+        Assertions.assertEquals("text/plain", response.headers().firstValue("Content-Type").get());
         Assertions.assertEquals("data", response.body());
         //test with a larger file
         StringBuilder contents = new StringBuilder();

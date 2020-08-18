@@ -10,18 +10,19 @@ import javax.json.JsonObject;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import edu.wisc.library.ocfl.api.exception.NotFoundException;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.AbstractHandler;
 import org.eclipse.jetty.server.Request;
+import edu.wisc.library.ocfl.api.exception.NotFoundException;
 import edu.wisc.library.ocfl.api.OcflRepository;
 import edu.wisc.library.ocfl.api.model.FileDetails;
 import edu.wisc.library.ocfl.api.model.VersionInfo;
+import edu.wisc.library.ocfl.api.model.ObjectVersionId;
+import edu.wisc.library.ocfl.api.exception.OverwriteException;
 import edu.wisc.library.ocfl.core.OcflRepositoryBuilder;
 import edu.wisc.library.ocfl.core.extension.storage.layout.config.HashedTruncatedNTupleIdConfig;
 import edu.wisc.library.ocfl.core.storage.filesystem.FileSystemOcflStorage;
-import edu.wisc.library.ocfl.api.model.ObjectVersionId;
-import edu.wisc.library.ocfl.api.exception.OverwriteException;
+import org.apache.tika.Tika;
 
 import static edu.wisc.library.ocfl.api.OcflOption.OVERWRITE;
 
@@ -117,7 +118,12 @@ public class OcflHttp extends AbstractHandler {
                     if(request.getMethod().equals("GET")) {
                         if(object.containsFile(path)) {
                             response.setStatus(HttpServletResponse.SC_OK);
-                            try (var stream = object.getFile(path).getStream().enableFixityCheck(false)) {
+                            var file = object.getFile(path);
+                            try (var stream = file.getStream().enableFixityCheck(false)) {
+                                var contentType = OcflHttp.getContentType(stream);
+                                response.addHeader("Content-Type", contentType);
+                            }
+                            try (var stream = file.getStream().enableFixityCheck(false)) {
                                 try (var outputStream = response.getOutputStream()) {
                                     byte[] bytesRead;
                                     while (true) {
@@ -198,6 +204,12 @@ public class OcflHttp extends AbstractHandler {
             }
         }
         baseRequest.setHandled(true);
+    }
+
+    public static String getContentType(InputStream is) throws IOException {
+        var tika = new Tika();
+        var type = tika.detect(is);
+        return type;
     }
 
     public static void main(String[] args) throws Exception {
