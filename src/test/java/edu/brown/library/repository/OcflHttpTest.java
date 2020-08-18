@@ -134,12 +134,9 @@ public class OcflHttpTest {
         Assertions.assertEquals("text/plain", response.headers().firstValue("Content-Type").get());
         Assertions.assertEquals("data", response.body());
         //test with a larger file
-        StringBuilder contents = new StringBuilder();
-        for(int i = 0; i<4000; i++) {
-            contents.append("abcdefghij");
-        }
+        var contents = "abcdefghij".repeat(4000);
         ocflHttp.writeFileToObject(objectId,
-                new ByteArrayInputStream(contents.toString().getBytes(StandardCharsets.UTF_8)),
+                new ByteArrayInputStream(contents.getBytes(StandardCharsets.UTF_8)),
                 "biggerfile", new VersionInfo(), false);
         uri = URI.create("http://localhost:8000/" + objectId + "/biggerfile");
         request = HttpRequest.newBuilder(uri).GET().build();
