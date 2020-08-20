@@ -120,7 +120,7 @@ public class OcflHttp extends AbstractHandler {
                             response.setStatus(HttpServletResponse.SC_OK);
                             var file = object.getFile(path);
                             try (var stream = file.getStream().enableFixityCheck(false)) {
-                                var contentType = OcflHttp.getContentType(stream);
+                                var contentType = OcflHttp.getContentType(stream, path);
                                 response.addHeader("Content-Type", contentType);
                             }
                             try (var stream = file.getStream().enableFixityCheck(false)) {
@@ -206,10 +206,9 @@ public class OcflHttp extends AbstractHandler {
         baseRequest.setHandled(true);
     }
 
-    public static String getContentType(InputStream is) throws IOException {
+    public static String getContentType(InputStream is, String name) throws IOException {
         var tika = new Tika();
-        var type = tika.detect(is);
-        return type;
+        return tika.detect(is, name);
     }
 
     public static void main(String[] args) throws Exception {
