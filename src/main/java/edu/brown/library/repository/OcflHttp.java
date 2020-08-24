@@ -57,9 +57,7 @@ public class OcflHttp extends AbstractHandler {
     }
 
     JsonObject getRootOutput() {
-        return Json.createObjectBuilder()
-                .add("OCFL ROOT", repoRoot.toString())
-                .build();
+        return Json.createObjectBuilder().add("OCFL ROOT", repoRoot.toString()).build();
     }
 
     void handleRoot(HttpServletResponse response) throws IOException {
@@ -162,9 +160,7 @@ public class OcflHttp extends AbstractHandler {
             for (FileDetails f : files) {
                 filesOutput.add(f.getPath(), emptyOutput);
             }
-            var output = Json.createObjectBuilder()
-                    .add("files", filesOutput)
-                    .build();
+            var output = Json.createObjectBuilder().add("files", filesOutput).build();
             response.setStatus(HttpServletResponse.SC_OK);
             var writer = Json.createWriter(response.getWriter());
             writer.writeObject(output);
@@ -207,6 +203,16 @@ public class OcflHttp extends AbstractHandler {
     }
 
     public static String getContentType(InputStream is, String name) throws IOException {
+        /*
+        There could be a couple issues with this tika-detection:
+        1. The content-type might not be what we expect:
+            - we could do the full tika detection, where we read/parse the whole file
+            - we could explicitly store the mimetype in a location that OcflHttp knows how to process
+                (eg. in a mimetypes.json file for each object, with the filename coming from a config file setting)
+                We might want to generalize the file to include more technical metadata.
+                Or, could mimetypes be added (through an extension) to inventory.json?
+        2. The detection might not be as fast as we want: we could use some kind of caching (with pre-warming).
+         */
         var tika = new Tika();
         return tika.detect(is, name);
     }
@@ -233,5 +239,4 @@ public class OcflHttp extends AbstractHandler {
         server.start();
         server.join();
     }
-
 }
