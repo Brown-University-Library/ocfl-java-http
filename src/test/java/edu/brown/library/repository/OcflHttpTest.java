@@ -12,6 +12,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 
 import edu.wisc.library.ocfl.api.model.ObjectVersionId;
 import edu.wisc.library.ocfl.api.model.VersionInfo;
@@ -185,5 +187,59 @@ public class OcflHttpTest {
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(404, response.statusCode());
         Assertions.assertEquals("testsuite:1/nonexistent doesn't exist. Use POST to create it.", response.body());
+    }
+
+    @Test
+    public void testConcurrentWrites() throws Exception {
+        //https://jodah.net/testing-multi-threaded-code
+        AtomicReference<String> failure = new AtomicReference<>();
+        var numThreads = 2;
+        var doneSignal = new CountDownLatch(numThreads);
+        for (int i = 0; i < numThreads; i++) {
+            new Thread(new FilePoster(doneSignal, failure)).start();
+        }
+        doneSignal.await();
+        Assertions.assertEquals(failure.get(), "ObjectOutOfSyncException");
+    }
+}
+
+class FilePoster implements Runnable {
+
+    private final CountDownLatch doneSignal;
+    private final AtomicReference<String> failure;
+
+    FilePoster(CountDownLatch doneSignal, AtomicReference<String> failure) {
+        this.doneSignal = doneSignal;
+        this.failure = failure;
+    }
+
+    public void run() {
+        var objectId = "testsuite:1";
+        var uri = URI.create("http://localhost:8000/" + objectId + "/file1?message=adding%20file1&username=someone&useraddress=someone%40school.edu");
+        var request = HttpRequest.newBuilder(uri)
+                .POST(HttpRequest.BodyPublishers.ofString("content")).build();
+        var client = HttpClient.newHttpClient();
+        try {
+            var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            var statusCode = response.statusCode();
+            var body = response.body();
+            try {
+                Assertions.assertEquals(201, statusCode);
+            }
+            catch(AssertionError e) {
+                if(body.contains("ObjectOutOfSyncException")) {
+                    failure.set("ObjectOutOfSyncException");
+                }
+            }
+        }
+        catch(IOException e) {
+            failure.set(e.toString());
+        }
+        catch(InterruptedException e) {
+            failure.set(e.toString());
+        }
+        finally {
+            doneSignal.countDown();
+        }
     }
 }
