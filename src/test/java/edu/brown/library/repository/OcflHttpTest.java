@@ -12,8 +12,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicReference;
 
 import edu.wisc.library.ocfl.api.model.ObjectVersionId;
 import edu.wisc.library.ocfl.api.model.VersionInfo;
@@ -192,25 +192,36 @@ public class OcflHttpTest {
     @Test
     public void testConcurrentWrites() throws Exception {
         //https://jodah.net/testing-multi-threaded-code
-        AtomicReference<String> failure = new AtomicReference<>();
-        var numThreads = 2;
-        var doneSignal = new CountDownLatch(numThreads);
-        for (int i = 0; i < numThreads; i++) {
-            new Thread(new FilePoster(doneSignal, failure)).start();
+        var doneSignal = new CountDownLatch(2);
+        var posters = List.of(
+                new FilePoster(doneSignal),
+                new FilePoster(doneSignal)
+        );
+
+        for (var poster: posters) {
+            new Thread(poster).start();
         }
         doneSignal.await();
-        Assertions.assertEquals(failure.get(), "ObjectOutOfSyncException");
+
+        var failCount = 0;
+        for (var poster: posters) {
+            if (!poster.failure.equals("")) {
+                failCount++;
+                Assertions.assertEquals("ObjectOutOfSyncException", poster.failure);
+            }
+        }
+        Assertions.assertEquals(1, failCount);
     }
 }
 
 class FilePoster implements Runnable {
 
     private final CountDownLatch doneSignal;
-    private final AtomicReference<String> failure;
+    String failure;
 
-    FilePoster(CountDownLatch doneSignal, AtomicReference<String> failure) {
+    FilePoster(CountDownLatch doneSignal) {
         this.doneSignal = doneSignal;
-        this.failure = failure;
+        this.failure = "";
     }
 
     public void run() {
@@ -228,15 +239,18 @@ class FilePoster implements Runnable {
             }
             catch(AssertionError e) {
                 if(body.contains("ObjectOutOfSyncException")) {
-                    failure.set("ObjectOutOfSyncException");
+                    failure = "ObjectOutOfSyncException";
+                }
+                else {
+                    failure = e.toString();
                 }
             }
         }
         catch(IOException e) {
-            failure.set(e.toString());
+            failure = e.toString();
         }
         catch(InterruptedException e) {
-            failure.set(e.toString());
+            failure = e.toString();
         }
         finally {
             doneSignal.countDown();
