@@ -13,6 +13,7 @@ import javax.servlet.http.HttpServletResponse;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.AbstractHandler;
 import org.eclipse.jetty.server.Request;
+import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import edu.wisc.library.ocfl.api.exception.NotFoundException;
 import edu.wisc.library.ocfl.api.OcflRepository;
 import edu.wisc.library.ocfl.api.model.FileDetails;
@@ -217,8 +218,22 @@ public class OcflHttp extends AbstractHandler {
         return tika.detect(is, name);
     }
 
+    public static Server getServer(int port, int minThreads, int maxThreads) {
+        Server server = new Server(port);
+        var threadPool = (QueuedThreadPool) server.getThreadPool();
+        if(minThreads != -1) {
+            threadPool.setMinThreads(minThreads);
+        }
+        if(maxThreads != -1) {
+            threadPool.setMaxThreads(maxThreads);
+        }
+        return server;
+    }
+
     public static void main(String[] args) throws Exception {
         var port = 8000;
+        var minThreads = -1;
+        var maxThreads = -1;
         var tmp = System.getProperty("java.io.tmpdir");
         var repoRootDir = Path.of(tmp).resolve("ocfl-java-http");
         if(args.length == 1) {
@@ -228,9 +243,11 @@ public class OcflHttp extends AbstractHandler {
                 var object = reader.readObject();
                 repoRootDir = Path.of(object.getString("OCFL-ROOT"));
                 port = object.getInt("PORT");
+                minThreads = object.getInt("JETTY_MIN_THREADS", -1);
+                maxThreads = object.getInt("JETTY_MAX_THREADS", -1);
             }
         }
-        Server server = new Server(port);
+        var server = getServer(port, minThreads, maxThreads);
         var ocflHttp = new OcflHttp(
                 repoRootDir,
                 Files.createTempDirectory("ocfl-work")

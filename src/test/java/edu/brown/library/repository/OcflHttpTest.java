@@ -12,12 +12,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicReference;
 
 import edu.wisc.library.ocfl.api.model.ObjectVersionId;
 import edu.wisc.library.ocfl.api.model.VersionInfo;
 import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
@@ -62,7 +63,7 @@ public class OcflHttpTest {
         tmpRoot = Files.createTempDirectory("ocfl-java-http");
         workDir = Files.createTempDirectory("ocfl-work");
         ocflHttp = new OcflHttp(tmpRoot, workDir);
-        server = new Server(8000);
+        server = OcflHttp.getServer(8000, 8, 60);
         server.setHandler(ocflHttp);
         server.start();
         client = HttpClient.newHttpClient();
@@ -73,6 +74,19 @@ public class OcflHttpTest {
         server.stop();
         deleteDirectory(tmpRoot);
         deleteDirectory(workDir);
+    }
+
+    @Test
+    public void testGetServer() throws Exception {
+        var s = OcflHttp.getServer(5000, -1, -1);
+        var threadPool = (QueuedThreadPool)s.getThreadPool();
+        Assertions.assertEquals(8, threadPool.getMinThreads());
+        Assertions.assertEquals(200, threadPool.getMaxThreads());
+
+        s = OcflHttp.getServer(5000, 4, 300);
+        threadPool = (QueuedThreadPool)s.getThreadPool();
+        Assertions.assertEquals(4, threadPool.getMinThreads());
+        Assertions.assertEquals(300, threadPool.getMaxThreads());
     }
 
     @Test
@@ -192,25 +206,36 @@ public class OcflHttpTest {
     @Test
     public void testConcurrentWrites() throws Exception {
         //https://jodah.net/testing-multi-threaded-code
-        AtomicReference<String> failure = new AtomicReference<>();
-        var numThreads = 2;
-        var doneSignal = new CountDownLatch(numThreads);
-        for (int i = 0; i < numThreads; i++) {
-            new Thread(new FilePoster(doneSignal, failure)).start();
+        var doneSignal = new CountDownLatch(2);
+        var posters = List.of(
+                new FilePoster(doneSignal),
+                new FilePoster(doneSignal)
+        );
+
+        for (var poster: posters) {
+            new Thread(poster).start();
         }
         doneSignal.await();
-        Assertions.assertEquals(failure.get(), "ObjectOutOfSyncException");
+
+        var failCount = 0;
+        for (var poster: posters) {
+            if (!poster.failure.equals("")) {
+                failCount++;
+                Assertions.assertEquals("ObjectOutOfSyncException", poster.failure);
+            }
+        }
+        Assertions.assertEquals(1, failCount);
     }
 }
 
 class FilePoster implements Runnable {
 
     private final CountDownLatch doneSignal;
-    private final AtomicReference<String> failure;
+    String failure;
 
-    FilePoster(CountDownLatch doneSignal, AtomicReference<String> failure) {
+    FilePoster(CountDownLatch doneSignal) {
         this.doneSignal = doneSignal;
-        this.failure = failure;
+        this.failure = "";
     }
 
     public void run() {
@@ -228,15 +253,18 @@ class FilePoster implements Runnable {
             }
             catch(AssertionError e) {
                 if(body.contains("ObjectOutOfSyncException")) {
-                    failure.set("ObjectOutOfSyncException");
+                    failure = "ObjectOutOfSyncException";
+                }
+                else {
+                    failure = e.toString();
                 }
             }
         }
         catch(IOException e) {
-            failure.set(e.toString());
+            failure = e.toString();
         }
         catch(InterruptedException e) {
-            failure.set(e.toString());
+            failure = e.toString();
         }
         finally {
             doneSignal.countDown();
