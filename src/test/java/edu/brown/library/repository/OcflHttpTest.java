@@ -18,6 +18,7 @@ import java.util.concurrent.CountDownLatch;
 import edu.wisc.library.ocfl.api.model.ObjectVersionId;
 import edu.wisc.library.ocfl.api.model.VersionInfo;
 import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
@@ -62,7 +63,7 @@ public class OcflHttpTest {
         tmpRoot = Files.createTempDirectory("ocfl-java-http");
         workDir = Files.createTempDirectory("ocfl-work");
         ocflHttp = new OcflHttp(tmpRoot, workDir);
-        server = new Server(8000);
+        server = OcflHttp.getServer(8000, 8, 60);
         server.setHandler(ocflHttp);
         server.start();
         client = HttpClient.newHttpClient();
@@ -73,6 +74,19 @@ public class OcflHttpTest {
         server.stop();
         deleteDirectory(tmpRoot);
         deleteDirectory(workDir);
+    }
+
+    @Test
+    public void testGetServer() throws Exception {
+        var s = OcflHttp.getServer(5000, -1, -1);
+        var threadPool = (QueuedThreadPool)s.getThreadPool();
+        Assertions.assertEquals(8, threadPool.getMinThreads());
+        Assertions.assertEquals(200, threadPool.getMaxThreads());
+
+        s = OcflHttp.getServer(5000, 4, 300);
+        threadPool = (QueuedThreadPool)s.getThreadPool();
+        Assertions.assertEquals(4, threadPool.getMinThreads());
+        Assertions.assertEquals(300, threadPool.getMaxThreads());
     }
 
     @Test
