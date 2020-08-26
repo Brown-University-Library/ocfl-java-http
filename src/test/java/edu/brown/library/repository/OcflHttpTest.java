@@ -149,6 +149,13 @@ public class OcflHttpTest {
         Assertions.assertEquals("4", response.headers().firstValue("Content-Length").get());
         Assertions.assertEquals("text/plain", response.headers().firstValue("Content-Type").get());
         Assertions.assertEquals("data", response.body());
+        //test HEAD request
+        request = HttpRequest.newBuilder(uri).method("HEAD", HttpRequest.BodyPublishers.noBody()).build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(200, response.statusCode());
+        Assertions.assertEquals("4", response.headers().firstValue("Content-Length").get());
+        Assertions.assertEquals("text/plain", response.headers().firstValue("Content-Type").get());
+        Assertions.assertEquals("", response.body());
         //test with a larger file
         var contents = "abcdefghij".repeat(4000);
         ocflHttp.writeFileToObject(objectId,
@@ -157,7 +164,7 @@ public class OcflHttpTest {
         uri = URI.create("http://localhost:8000/" + objectId + "/biggerfile");
         request = HttpRequest.newBuilder(uri).GET().build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        Assertions.assertEquals(contents.toString(), response.body());
+        Assertions.assertEquals(contents, response.body());
     }
 
     @Test
