@@ -75,7 +75,8 @@ public class OcflHttp extends AbstractHandler {
                           String path)
             throws IOException
     {
-        if(request.getMethod().equals("POST")) {
+        var method = request.getMethod();
+        if(method.equals("POST")) {
             try {
                 var versionInfo = new VersionInfo();
                 var params = request.getParameterMap();
@@ -103,7 +104,7 @@ public class OcflHttp extends AbstractHandler {
         else {
             try {
                 var object = repo.getObject(ObjectVersionId.head(objectId));
-                if(request.getMethod().equals("PUT")) {
+                if(method.equals("PUT")) {
                     if(object.containsFile(path)) {
                         writeFileToObject(objectId, request.getInputStream(), path, new VersionInfo(), true);
                         response.setStatus(HttpServletResponse.SC_CREATED);
@@ -114,7 +115,7 @@ public class OcflHttp extends AbstractHandler {
                     }
                 }
                 else {
-                    if(request.getMethod().equals("GET")) {
+                    if(method.equals("GET") || method.equals("HEAD")) {
                         if(object.containsFile(path)) {
                             response.setStatus(HttpServletResponse.SC_OK);
                             var file = object.getFile(path);
@@ -122,18 +123,24 @@ public class OcflHttp extends AbstractHandler {
                                 var contentType = OcflHttp.getContentType(stream, path);
                                 response.addHeader("Content-Type", contentType);
                             }
-                            try (var stream = file.getStream().enableFixityCheck(false)) {
-                                try (var outputStream = response.getOutputStream()) {
-                                    byte[] bytesRead;
-                                    while (true) {
-                                        bytesRead = stream.readNBytes(ChunkSize);
-                                        if (bytesRead.length > 0) {
-                                            outputStream.write(bytesRead);
-                                        } else {
-                                            break;
+                            if(method.equals("GET")) {
+                                try (var stream = file.getStream().enableFixityCheck(false)) {
+                                    try (var outputStream = response.getOutputStream()) {
+                                        byte[] bytesRead;
+                                        while (true) {
+                                            bytesRead = stream.readNBytes(ChunkSize);
+                                            if (bytesRead.length > 0) {
+                                                outputStream.write(bytesRead);
+                                            } else {
+                                                break;
+                                            }
                                         }
                                     }
                                 }
+                            }
+                            else {
+                                var filePath = repoRoot.resolve(file.getStorageRelativePath());
+                                response.addHeader("Content-Length", String.valueOf(Files.size(filePath)));
                             }
                         }
                         else {
