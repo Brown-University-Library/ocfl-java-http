@@ -118,19 +118,42 @@ public class OcflHttp extends AbstractHandler {
                     if(method.equals("GET") || method.equals("HEAD")) {
                         if(object.containsFile(path)) {
                             response.setStatus(HttpServletResponse.SC_OK);
+                            response.addHeader("Accept-Ranges", "bytes");
                             var file = object.getFile(path);
                             try (var stream = file.getStream().enableFixityCheck(false)) {
                                 var contentType = OcflHttp.getContentType(stream, path);
                                 response.addHeader("Content-Type", contentType);
                             }
                             if(method.equals("GET")) {
+                                var rangeHeader = request.getHeader("Range");
+                                var start = 0;
+                                var end = -1;
+                                if(rangeHeader != null && !rangeHeader.isEmpty()) {
+                                    var parts = rangeHeader.split("=");
+                                    if(parts[0].equals("bytes")) {
+                                        var numbers = parts[1].split("-");
+                                        start = Integer.parseInt(numbers[0])-1;
+                                        end = Integer.parseInt(numbers[1]);
+                                    }
+                                    else {
+                                        //invalid range
+                                    }
+                                }
                                 try (var stream = file.getStream().enableFixityCheck(false)) {
                                     try (var outputStream = response.getOutputStream()) {
                                         byte[] bytesRead;
+                                        stream.skip(start);
+                                        var currentPosition = start;
                                         while (true) {
-                                            bytesRead = stream.readNBytes(ChunkSize);
+                                            if(end != -1 && currentPosition + ChunkSize > end) {
+                                                bytesRead = stream.readNBytes(end - currentPosition);
+                                            }
+                                            else {
+                                                bytesRead = stream.readNBytes(ChunkSize);
+                                            }
                                             if (bytesRead.length > 0) {
                                                 outputStream.write(bytesRead);
+                                                currentPosition += bytesRead.length;
                                             } else {
                                                 break;
                                             }
@@ -170,6 +193,7 @@ public class OcflHttp extends AbstractHandler {
             }
             var output = Json.createObjectBuilder().add("files", filesOutput).build();
             response.setStatus(HttpServletResponse.SC_OK);
+            response.addHeader("Accept-Ranges", "bytes");
             var writer = Json.createWriter(response.getWriter());
             writer.writeObject(output);
         }
