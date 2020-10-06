@@ -31,7 +31,7 @@ public class OcflHttp extends AbstractHandler {
 
     final Pattern ObjectIdPathPattern = Pattern.compile("^/([a-zA-Z0-9:]+)/([a-zA-Z0-9:]+)$");
     final Pattern ObjectIdPattern = Pattern.compile("^/([a-zA-Z0-9:]+)$");
-    final long ChunkSize = 1024L;
+    final long ChunkSize = 1000L;
 
     private Path repoRoot;
     OcflRepository repo;
@@ -129,7 +129,7 @@ public class OcflHttp extends AbstractHandler {
                             if(method.equals("GET")) {
                                 var rangeHeader = request.getHeader("Range");
                                 var start = 0L;
-                                var end = -1L;
+                                var end = fileSize - 1L; //end value is included in the range
                                 if(rangeHeader != null && !rangeHeader.isEmpty()) {
                                     var parts = rangeHeader.split("=");
                                     if(parts[0].equals("bytes")) {
@@ -141,7 +141,7 @@ public class OcflHttp extends AbstractHandler {
                                             var numbers = parts[1].split("-");
                                             start = Long.parseLong(numbers[0]);
                                             if (numbers.length > 1) {
-                                                end = Long.parseLong(numbers[1]) + 1L;
+                                                end = Long.parseLong(numbers[1]);
                                             }
                                         }
                                     }
@@ -155,8 +155,8 @@ public class OcflHttp extends AbstractHandler {
                                         stream.skip(start);
                                         var currentPosition = start;
                                         while (true) {
-                                            if(end != -1L && currentPosition + ChunkSize > end) {
-                                                bytesRead = stream.readNBytes((int)(end - currentPosition)); //safe - this is less than ChunkSize
+                                            if(currentPosition + ChunkSize > end) {
+                                                bytesRead = stream.readNBytes((int)(end + 1 - currentPosition)); //safe - this is less than ChunkSize
                                             }
                                             else {
                                                 bytesRead = stream.readNBytes((int)ChunkSize); //safe - ChunkSize isn't huge
