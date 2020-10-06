@@ -172,15 +172,19 @@ public class OcflHttpTest {
         //test range requests
         request = HttpRequest.newBuilder(uri).header("Range", "bytes=0-2").GET().build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(206, response.statusCode());
         Assertions.assertEquals("abc", response.body());
         request = HttpRequest.newBuilder(uri).header("Range", "bytes=1-4").GET().build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(206, response.statusCode());
         Assertions.assertEquals("bcde", response.body());
         request = HttpRequest.newBuilder(uri).header("Range", "bytes=39995-").GET().build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(206, response.statusCode());
         Assertions.assertEquals("fghij", response.body());
         request = HttpRequest.newBuilder(uri).header("Range", "bytes=-4").GET().build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(206, response.statusCode());
         Assertions.assertEquals("ghij", response.body());
     }
 

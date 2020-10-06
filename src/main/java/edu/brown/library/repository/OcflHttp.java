@@ -144,6 +144,7 @@ public class OcflHttp extends AbstractHandler {
                                                 end = Long.parseLong(numbers[1]);
                                             }
                                         }
+                                        response.setStatus(HttpServletResponse.SC_PARTIAL_CONTENT);
                                     }
                                     else {
                                         //invalid range
