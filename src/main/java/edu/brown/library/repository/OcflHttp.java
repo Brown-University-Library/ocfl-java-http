@@ -31,7 +31,7 @@ public class OcflHttp extends AbstractHandler {
 
     final Pattern ObjectIdPathPattern = Pattern.compile("^/([a-zA-Z0-9:]+)/([a-zA-Z0-9:]+)$");
     final Pattern ObjectIdPattern = Pattern.compile("^/([a-zA-Z0-9:]+)$");
-    final int ChunkSize = 1024;
+    final long ChunkSize = 1024L;
 
     private Path repoRoot;
     OcflRepository repo;
@@ -124,16 +124,26 @@ public class OcflHttp extends AbstractHandler {
                                 var contentType = OcflHttp.getContentType(stream, path);
                                 response.addHeader("Content-Type", contentType);
                             }
+                            var filePath = repoRoot.resolve(file.getStorageRelativePath());
+                            var fileSize = Files.size(filePath);
                             if(method.equals("GET")) {
                                 var rangeHeader = request.getHeader("Range");
-                                var start = 0;
-                                var end = -1;
+                                var start = 0L;
+                                var end = -1L;
                                 if(rangeHeader != null && !rangeHeader.isEmpty()) {
                                     var parts = rangeHeader.split("=");
                                     if(parts[0].equals("bytes")) {
-                                        var numbers = parts[1].split("-");
-                                        start = Integer.parseInt(numbers[0])-1;
-                                        end = Integer.parseInt(numbers[1]);
+                                        if(parts[1].startsWith("-")) {
+                                            var suffixLength = Long.parseLong(parts[1]);
+                                            start = fileSize + suffixLength;
+                                        }
+                                        else {
+                                            var numbers = parts[1].split("-");
+                                            start = Long.parseLong(numbers[0]);
+                                            if (numbers.length > 1) {
+                                                end = Long.parseLong(numbers[1]) + 1L;
+                                            }
+                                        }
                                     }
                                     else {
                                         //invalid range
@@ -145,11 +155,11 @@ public class OcflHttp extends AbstractHandler {
                                         stream.skip(start);
                                         var currentPosition = start;
                                         while (true) {
-                                            if(end != -1 && currentPosition + ChunkSize > end) {
-                                                bytesRead = stream.readNBytes(end - currentPosition);
+                                            if(end != -1L && currentPosition + ChunkSize > end) {
+                                                bytesRead = stream.readNBytes((int)(end - currentPosition)); //safe - this is less than ChunkSize
                                             }
                                             else {
-                                                bytesRead = stream.readNBytes(ChunkSize);
+                                                bytesRead = stream.readNBytes((int)ChunkSize); //safe - ChunkSize isn't huge
                                             }
                                             if (bytesRead.length > 0) {
                                                 outputStream.write(bytesRead);
@@ -162,8 +172,7 @@ public class OcflHttp extends AbstractHandler {
                                 }
                             }
                             else {
-                                var filePath = repoRoot.resolve(file.getStorageRelativePath());
-                                response.addHeader("Content-Length", String.valueOf(Files.size(filePath)));
+                                response.addHeader("Content-Length", String.valueOf(fileSize));
                             }
                         }
                         else {

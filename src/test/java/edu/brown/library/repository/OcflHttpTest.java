@@ -170,9 +170,18 @@ public class OcflHttpTest {
         Assertions.assertEquals(contents, response.body());
 
         //test range requests
-        request = HttpRequest.newBuilder(uri).header("Range", "bytes=2-4").GET().build();
+        request = HttpRequest.newBuilder(uri).header("Range", "bytes=0-2").GET().build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        Assertions.assertEquals("bcd", response.body());
+        Assertions.assertEquals("abc", response.body());
+        request = HttpRequest.newBuilder(uri).header("Range", "bytes=1-4").GET().build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals("bcde", response.body());
+        request = HttpRequest.newBuilder(uri).header("Range", "bytes=39995-").GET().build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals("fghij", response.body());
+        request = HttpRequest.newBuilder(uri).header("Range", "bytes=-4").GET().build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals("ghij", response.body());
     }
 
     @Test
