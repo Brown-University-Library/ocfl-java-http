@@ -137,6 +137,8 @@ public class OcflHttp extends AbstractHandler {
                             }
                         }
                         response.setStatus(HttpServletResponse.SC_PARTIAL_CONTENT);
+                        var contentRange = "bytes " + start + "-" + end + "/" + fileSize;
+                        response.addHeader("Content-Range", contentRange);
                     }
                     else {
                         //invalid range
