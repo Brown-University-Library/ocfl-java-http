@@ -31,8 +31,9 @@ import static edu.wisc.library.ocfl.api.OcflOption.OVERWRITE;
 
 public class OcflHttp extends AbstractHandler {
 
+    final Pattern ObjectIdFilesPattern = Pattern.compile("^/([a-zA-Z0-9:]+)/files$");
+    final Pattern ObjectIdPathContentPattern = Pattern.compile("^/([a-zA-Z0-9:]+)/([a-zA-Z0-9:]+)/content$");
     final Pattern ObjectIdPathPattern = Pattern.compile("^/([a-zA-Z0-9:]+)/([a-zA-Z0-9:]+)$");
-    final Pattern ObjectIdPattern = Pattern.compile("^/([a-zA-Z0-9:]+)$");
     final long ChunkSize = 1000L;
 
     private Path repoRoot;
@@ -188,6 +189,24 @@ public class OcflHttp extends AbstractHandler {
         }
     }
 
+    void handleObjectPathContent(HttpServletRequest request,
+                                 HttpServletResponse response,
+                                 String objectId,
+                                 String path)
+            throws IOException
+    {
+        var method = request.getMethod();
+        if(method.equals("GET") || method.equals("HEAD")) {
+            try {
+                var object = repo.getObject(ObjectVersionId.head(objectId));
+                handleObjectPathGetHead(request, response, objectId, object, path);
+            } catch(NotFoundException e) {
+                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                response.getWriter().print(objectId + " not found");
+            }
+        }
+    }
+
     void handleObjectPath(HttpServletRequest request,
                           HttpServletResponse response,
                           String objectId,
@@ -204,11 +223,6 @@ public class OcflHttp extends AbstractHandler {
                 if(method.equals("PUT")) {
                     handleObjectPathPut(request, response, objectId, object, path);
                 }
-                else {
-                    if(method.equals("GET") || method.equals("HEAD")) {
-                        handleObjectPathGetHead(request, response, objectId, object, path);
-                    }
-                }
             } catch(NotFoundException e) {
                 response.setStatus(HttpServletResponse.SC_NOT_FOUND);
                 response.getWriter().print(objectId + " not found");
@@ -216,7 +230,7 @@ public class OcflHttp extends AbstractHandler {
         }
     }
 
-    void handleObject(HttpServletResponse response,
+    void handleObjectFiles(HttpServletResponse response,
                       String objectId)
         throws IOException
     {
@@ -251,20 +265,28 @@ public class OcflHttp extends AbstractHandler {
             handleRoot(response);
         }
         else {
-            var matcher = ObjectIdPathPattern.matcher(pathInfo);
-            if (matcher.matches()) {
+            var matcher = ObjectIdFilesPattern.matcher(pathInfo);
+            if(matcher.matches()) {
                 var objectId = matcher.group(1);
-                var path = matcher.group(2);
-                handleObjectPath(request, response, objectId, path);
+                handleObjectFiles(response, objectId);
             }
             else {
-                var objectIdMatcher = ObjectIdPattern.matcher(pathInfo);
-                if (objectIdMatcher.matches()) {
-                    var objectId = objectIdMatcher.group(1);
-                    handleObject(response, objectId);
+                var matcher2 = ObjectIdPathContentPattern.matcher(pathInfo);
+                if (matcher2.matches()) {
+                    var objectId = matcher2.group(1);
+                    var path = matcher2.group(2);
+                    handleObjectPathContent(request, response, objectId, path);
                 }
                 else {
-                    response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                    var matcher3 = ObjectIdPathPattern.matcher(pathInfo);
+                    if (matcher3.matches()) {
+                        var objectId = matcher3.group(1);
+                        var path = matcher3.group(2);
+                        handleObjectPath(request, response, objectId, path);
+                    }
+                    else {
+                        response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                    }
                 }
             }
         }
