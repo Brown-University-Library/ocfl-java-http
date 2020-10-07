@@ -106,11 +106,11 @@ public class OcflHttpTest {
     }
 
     @Test
-    public void testShowObject() throws Exception {
+    public void testObjectFiles() throws Exception {
         ocflHttp.writeFileToObject("testsuite:1",
                 new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)),
                 "file1", new VersionInfo(), false);
-        var url = "http://localhost:8000/testsuite:1";
+        var url = "http://localhost:8000/testsuite:1/files";
         var request = HttpRequest.newBuilder(URI.create(url)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
@@ -119,7 +119,7 @@ public class OcflHttpTest {
         Assertions.assertEquals("{\"files\":{\"file1\":{}}}", body);
 
         //now test object that doesn't exist
-        url = "http://localhost:8000/testsuite:notfound";
+        url = "http://localhost:8000/testsuite:notfound/files";
         request = HttpRequest.newBuilder(URI.create(url)).build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(404, response.statusCode());
@@ -127,10 +127,10 @@ public class OcflHttpTest {
     }
 
     @Test
-    public void testGetFile() throws Exception {
+    public void testGetFileContent() throws Exception {
         var objectId = "testsuite:1";
         //test non-existent object
-        var uri = URI.create("http://localhost:8000/" + objectId + "/file1");
+        var uri = URI.create("http://localhost:8000/" + objectId + "/file1/content");
         var request = HttpRequest.newBuilder(uri).GET().build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(404, response.statusCode());
@@ -143,7 +143,7 @@ public class OcflHttpTest {
         Assertions.assertEquals(404, response.statusCode());
         Assertions.assertEquals("testsuite:1/file1 not found", response.body());
         //now test success
-        uri = URI.create("http://localhost:8000/" + objectId + "/afile");
+        uri = URI.create("http://localhost:8000/" + objectId + "/afile/content");
         request = HttpRequest.newBuilder(uri).GET().build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
@@ -164,7 +164,7 @@ public class OcflHttpTest {
         ocflHttp.writeFileToObject(objectId,
                 new ByteArrayInputStream(contents.getBytes(StandardCharsets.UTF_8)),
                 "biggerfile", new VersionInfo(), false);
-        uri = URI.create("http://localhost:8000/" + objectId + "/biggerfile");
+        uri = URI.create("http://localhost:8000/" + objectId + "/biggerfile/content");
         request = HttpRequest.newBuilder(uri).GET().build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(contents, response.body());

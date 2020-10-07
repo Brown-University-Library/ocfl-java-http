@@ -7,9 +7,9 @@ API
 ---
 - GET /
     - returns {"OCFL ROOT": ...} as JSON
-- GET /<object_id>
+- GET /<object_id>/files
     - returns {"files": {"file1": {}}} as JSON
-- GET /<object_id>/<file_name> returns file contents
+- GET /<object_id>/<file_name>/content returns file contents
     - use "Range" header to request partial file contents
 - POST /<object_id>/<file_name>
     - url params: message, username, useraddress - these get added to OCFL version info
