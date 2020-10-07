@@ -178,6 +178,10 @@ public class OcflHttpTest {
         Assertions.assertEquals("bytes 0-2/40000", response.headers().firstValue("Content-Range").get());
         Assertions.assertEquals("text/plain", response.headers().firstValue("Content-Type").get());
         Assertions.assertEquals("abc", response.body());
+        request = HttpRequest.newBuilder(uri).header("Range", "bytes=39998-39999").GET().build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(206, response.statusCode());
+        Assertions.assertEquals("ij", response.body());
         request = HttpRequest.newBuilder(uri).header("Range", "bytes=1-4").GET().build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(206, response.statusCode());
@@ -190,6 +194,21 @@ public class OcflHttpTest {
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(206, response.statusCode());
         Assertions.assertEquals("ghij", response.body());
+        //invalid range requests (for this implementation - we don't handle multiple ranges or non-bytes units)
+        request = HttpRequest.newBuilder(uri).header("Range", "someunit=1-4").GET().build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(416, response.statusCode());
+        Assertions.assertEquals("bytes */40000", response.headers().firstValue("Content-Range").get());
+        Assertions.assertEquals("", response.body());
+        request = HttpRequest.newBuilder(uri).header("Range", "bytes=0-499, -500").GET().build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(416, response.statusCode());
+        request = HttpRequest.newBuilder(uri).header("Range", "bytes=40000-40004").GET().build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(416, response.statusCode());
+        request = HttpRequest.newBuilder(uri).header("Range", "bytes=39999-40000").GET().build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(416, response.statusCode());
     }
 
     @Test

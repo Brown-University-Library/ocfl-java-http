@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.regex.Pattern;
 import javax.json.Json;
 import javax.json.JsonObject;
@@ -123,25 +124,19 @@ public class OcflHttp extends AbstractHandler {
                 var start = 0L;
                 var end = fileSize - 1L; //end value is included in the range
                 if(rangeHeader != null && !rangeHeader.isEmpty()) {
-                    var parts = rangeHeader.split("=");
-                    if(parts[0].equals("bytes")) {
-                        if(parts[1].startsWith("-")) {
-                            var suffixLength = Long.parseLong(parts[1]);
-                            start = fileSize + suffixLength;
-                        }
-                        else {
-                            var numbers = parts[1].split("-");
-                            start = Long.parseLong(numbers[0]);
-                            if (numbers.length > 1) {
-                                end = Long.parseLong(numbers[1]);
-                            }
-                        }
+                    var range = OcflHttp.parseRangeHeader(rangeHeader, fileSize);
+                    if(range != null) {
+                        start = range.getOrDefault("start", start);
+                        end = range.getOrDefault("end", end);
                         response.setStatus(HttpServletResponse.SC_PARTIAL_CONTENT);
                         var contentRange = "bytes " + start + "-" + end + "/" + fileSize;
                         response.addHeader("Content-Range", contentRange);
                     }
                     else {
-                        //invalid range
+                        response.setStatus(HttpServletResponse.SC_REQUESTED_RANGE_NOT_SATISFIABLE);
+                        var contentRange = "bytes */" + fileSize;
+                        response.addHeader("Content-Range", contentRange);
+                        return;
                     }
                 }
                 try (var stream = file.getStream().enableFixityCheck(false)) {
@@ -289,6 +284,41 @@ public class OcflHttp extends AbstractHandler {
          */
         var tika = new Tika();
         return tika.detect(is, name);
+    }
+
+    public static HashMap<String, Long> parseRangeHeader(String rangeHeader, Long fileSize) {
+        try {
+            var parts = rangeHeader.split("=");
+            if (parts[0].equals("bytes")) {
+                Long start;
+                Long end;
+                var range = new HashMap<String, Long>();
+                if (parts[1].startsWith("-")) {
+                    var suffixLength = Long.parseLong(parts[1]);
+                    start = fileSize + suffixLength; //suffixLength is negative
+                    range.put("start", start);
+                } else {
+                    var numbers = parts[1].split("-");
+                    start = Long.parseLong(numbers[0]);
+                    range.put("start", start);
+                    if (numbers.length > 1) {
+                        end = Long.parseLong(numbers[1]);
+                        range.put("end", end);
+                    }
+                }
+                if(range.get("start") < 0 || range.get("start") >= fileSize) {
+                    return null;
+                }
+                if(range.getOrDefault("end", 0L) >= fileSize) {
+                    return null;
+                }
+                return range;
+            }
+        }
+        catch(Exception e) {
+            //if the parsing fails, we'll return null from this method and that will be handled above
+        }
+        return null;
     }
 
     public static Server getServer(int port, int minThreads, int maxThreads) {
