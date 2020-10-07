@@ -114,6 +114,7 @@ public class OcflHttpTest {
         var request = HttpRequest.newBuilder(URI.create(url)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
+        Assertions.assertEquals("bytes", response.headers().firstValue("Accept-Ranges").get());
         var body = response.body();
         Assertions.assertEquals("{\"files\":{\"file1\":{}}}", body);
 
@@ -146,6 +147,7 @@ public class OcflHttpTest {
         request = HttpRequest.newBuilder(uri).GET().build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
+        Assertions.assertEquals("bytes", response.headers().firstValue("Accept-Ranges").get());
         Assertions.assertEquals("4", response.headers().firstValue("Content-Length").get());
         Assertions.assertEquals("text/plain", response.headers().firstValue("Content-Type").get());
         Assertions.assertEquals("data", response.body());
@@ -153,6 +155,7 @@ public class OcflHttpTest {
         request = HttpRequest.newBuilder(uri).method("HEAD", HttpRequest.BodyPublishers.noBody()).build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
+        Assertions.assertEquals("bytes", response.headers().firstValue("Accept-Ranges").get());
         Assertions.assertEquals("4", response.headers().firstValue("Content-Length").get());
         Assertions.assertEquals("text/plain", response.headers().firstValue("Content-Type").get());
         Assertions.assertEquals("", response.body());
@@ -165,6 +168,28 @@ public class OcflHttpTest {
         request = HttpRequest.newBuilder(uri).GET().build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(contents, response.body());
+
+        //test range requests
+        request = HttpRequest.newBuilder(uri).header("Range", "bytes=0-2").GET().build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(206, response.statusCode());
+        Assertions.assertEquals("bytes", response.headers().firstValue("Accept-Ranges").get());
+        Assertions.assertEquals("3", response.headers().firstValue("Content-Length").get());
+        Assertions.assertEquals("bytes 0-2/40000", response.headers().firstValue("Content-Range").get());
+        Assertions.assertEquals("text/plain", response.headers().firstValue("Content-Type").get());
+        Assertions.assertEquals("abc", response.body());
+        request = HttpRequest.newBuilder(uri).header("Range", "bytes=1-4").GET().build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(206, response.statusCode());
+        Assertions.assertEquals("bcde", response.body());
+        request = HttpRequest.newBuilder(uri).header("Range", "bytes=39995-").GET().build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(206, response.statusCode());
+        Assertions.assertEquals("fghij", response.body());
+        request = HttpRequest.newBuilder(uri).header("Range", "bytes=-4").GET().build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(206, response.statusCode());
+        Assertions.assertEquals("ghij", response.body());
     }
 
     @Test

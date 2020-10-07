@@ -10,6 +10,7 @@ import javax.json.JsonObject;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import edu.wisc.library.ocfl.api.model.OcflObjectVersion;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.AbstractHandler;
 import org.eclipse.jetty.server.Request;
@@ -31,7 +32,7 @@ public class OcflHttp extends AbstractHandler {
 
     final Pattern ObjectIdPathPattern = Pattern.compile("^/([a-zA-Z0-9:]+)/([a-zA-Z0-9:]+)$");
     final Pattern ObjectIdPattern = Pattern.compile("^/([a-zA-Z0-9:]+)$");
-    final int ChunkSize = 1024;
+    final long ChunkSize = 1000L;
 
     private Path repoRoot;
     OcflRepository repo;
@@ -69,6 +70,129 @@ public class OcflHttp extends AbstractHandler {
         writer.writeObject(output);
     }
 
+    void handleObjectPathPost(HttpServletRequest request,
+                              HttpServletResponse response,
+                              String objectId,
+                              String path)
+            throws IOException
+    {
+        try {
+            var versionInfo = new VersionInfo();
+            var params = request.getParameterMap();
+            var messageParam = params.get("message");
+            if(messageParam.length > 0) {
+                versionInfo.setMessage(messageParam[0]);
+            }
+            var userNameParam = params.get("username");
+            if(userNameParam.length > 0) {
+                var userName = userNameParam[0];
+                var userAddressParam = params.get("useraddress");
+                var userAddress = "";
+                if(userAddressParam.length > 0) {
+                    userAddress = userAddressParam[0];
+                }
+                versionInfo.setUser(userName, userAddress);
+            }
+            writeFileToObject(objectId, request.getInputStream(), path, versionInfo, false);
+            response.setStatus(HttpServletResponse.SC_CREATED);
+        } catch(OverwriteException e) {
+            response.setStatus(HttpServletResponse.SC_CONFLICT);
+            response.getWriter().print(objectId + "/" + path + " already exists. Use PUT to overwrite it.");
+        }
+    }
+
+    void handleObjectPathGetHead(HttpServletRequest request,
+                                 HttpServletResponse response,
+                                 String objectId,
+                                 OcflObjectVersion object,
+                                 String path)
+            throws IOException
+    {
+        if(object.containsFile(path)) {
+            response.setStatus(HttpServletResponse.SC_OK);
+            response.addHeader("Accept-Ranges", "bytes");
+            var file = object.getFile(path);
+            try (var stream = file.getStream().enableFixityCheck(false)) {
+                var contentType = OcflHttp.getContentType(stream, path);
+                response.addHeader("Content-Type", contentType);
+            }
+            var filePath = repoRoot.resolve(file.getStorageRelativePath());
+            var fileSize = Files.size(filePath);
+            if(request.getMethod().equals("GET")) {
+                var rangeHeader = request.getHeader("Range");
+                var start = 0L;
+                var end = fileSize - 1L; //end value is included in the range
+                if(rangeHeader != null && !rangeHeader.isEmpty()) {
+                    var parts = rangeHeader.split("=");
+                    if(parts[0].equals("bytes")) {
+                        if(parts[1].startsWith("-")) {
+                            var suffixLength = Long.parseLong(parts[1]);
+                            start = fileSize + suffixLength;
+                        }
+                        else {
+                            var numbers = parts[1].split("-");
+                            start = Long.parseLong(numbers[0]);
+                            if (numbers.length > 1) {
+                                end = Long.parseLong(numbers[1]);
+                            }
+                        }
+                        response.setStatus(HttpServletResponse.SC_PARTIAL_CONTENT);
+                        var contentRange = "bytes " + start + "-" + end + "/" + fileSize;
+                        response.addHeader("Content-Range", contentRange);
+                    }
+                    else {
+                        //invalid range
+                    }
+                }
+                try (var stream = file.getStream().enableFixityCheck(false)) {
+                    try (var outputStream = response.getOutputStream()) {
+                        byte[] bytesRead;
+                        stream.skip(start);
+                        var currentPosition = start;
+                        while (true) {
+                            if(currentPosition + ChunkSize > end) {
+                                bytesRead = stream.readNBytes((int)(end + 1 - currentPosition)); //safe - this is less than ChunkSize
+                            }
+                            else {
+                                bytesRead = stream.readNBytes((int)ChunkSize); //safe - ChunkSize isn't huge
+                            }
+                            if (bytesRead.length > 0) {
+                                outputStream.write(bytesRead);
+                                currentPosition += bytesRead.length;
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            else {
+                response.addHeader("Content-Length", String.valueOf(fileSize));
+            }
+        }
+        else {
+            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            response.getWriter().print(objectId + "/" + path + " not found");
+        }
+    }
+
+    void handleObjectPathPut(HttpServletRequest request,
+                             HttpServletResponse response,
+                             String objectId,
+                             OcflObjectVersion object,
+                             String path)
+            throws IOException
+    {
+        if(object.containsFile(path)) {
+            writeFileToObject(objectId, request.getInputStream(), path, new VersionInfo(), true);
+            response.setStatus(HttpServletResponse.SC_CREATED);
+        }
+        else {
+            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            response.getWriter().print(objectId + "/" + path + " doesn't exist. Use POST to create it.");
+        }
+    }
+
     void handleObjectPath(HttpServletRequest request,
                           HttpServletResponse response,
                           String objectId,
@@ -77,76 +201,17 @@ public class OcflHttp extends AbstractHandler {
     {
         var method = request.getMethod();
         if(method.equals("POST")) {
-            try {
-                var versionInfo = new VersionInfo();
-                var params = request.getParameterMap();
-                var messageParam = params.get("message");
-                if(messageParam.length > 0) {
-                    versionInfo.setMessage(messageParam[0]);
-                }
-                var userNameParam = params.get("username");
-                if(userNameParam.length > 0) {
-                    var userName = userNameParam[0];
-                    var userAddressParam = params.get("useraddress");
-                    var userAddress = "";
-                    if(userAddressParam.length > 0) {
-                        userAddress = userAddressParam[0];
-                    }
-                    versionInfo.setUser(userName, userAddress);
-                }
-                writeFileToObject(objectId, request.getInputStream(), path, versionInfo, false);
-                response.setStatus(HttpServletResponse.SC_CREATED);
-            } catch(OverwriteException e) {
-                response.setStatus(HttpServletResponse.SC_CONFLICT);
-                response.getWriter().print(objectId + "/" + path + " already exists. Use PUT to overwrite it.");
-            }
+            handleObjectPathPost(request, response, objectId, path);
         }
         else {
             try {
                 var object = repo.getObject(ObjectVersionId.head(objectId));
                 if(method.equals("PUT")) {
-                    if(object.containsFile(path)) {
-                        writeFileToObject(objectId, request.getInputStream(), path, new VersionInfo(), true);
-                        response.setStatus(HttpServletResponse.SC_CREATED);
-                    }
-                    else {
-                        response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-                        response.getWriter().print(objectId + "/" + path + " doesn't exist. Use POST to create it.");
-                    }
+                    handleObjectPathPut(request, response, objectId, object, path);
                 }
                 else {
                     if(method.equals("GET") || method.equals("HEAD")) {
-                        if(object.containsFile(path)) {
-                            response.setStatus(HttpServletResponse.SC_OK);
-                            var file = object.getFile(path);
-                            try (var stream = file.getStream().enableFixityCheck(false)) {
-                                var contentType = OcflHttp.getContentType(stream, path);
-                                response.addHeader("Content-Type", contentType);
-                            }
-                            if(method.equals("GET")) {
-                                try (var stream = file.getStream().enableFixityCheck(false)) {
-                                    try (var outputStream = response.getOutputStream()) {
-                                        byte[] bytesRead;
-                                        while (true) {
-                                            bytesRead = stream.readNBytes(ChunkSize);
-                                            if (bytesRead.length > 0) {
-                                                outputStream.write(bytesRead);
-                                            } else {
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            else {
-                                var filePath = repoRoot.resolve(file.getStorageRelativePath());
-                                response.addHeader("Content-Length", String.valueOf(Files.size(filePath)));
-                            }
-                        }
-                        else {
-                            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-                            response.getWriter().print(objectId + "/" + path + " not found");
-                        }
+                        handleObjectPathGetHead(request, response, objectId, object, path);
                     }
                 }
             } catch(NotFoundException e) {
@@ -170,6 +235,7 @@ public class OcflHttp extends AbstractHandler {
             }
             var output = Json.createObjectBuilder().add("files", filesOutput).build();
             response.setStatus(HttpServletResponse.SC_OK);
+            response.addHeader("Accept-Ranges", "bytes");
             var writer = Json.createWriter(response.getWriter());
             writer.writeObject(output);
         }
