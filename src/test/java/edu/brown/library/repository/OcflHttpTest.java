@@ -130,7 +130,7 @@ public class OcflHttpTest {
     public void testGetFileContent() throws Exception {
         var objectId = "testsuite:1";
         //test non-existent object
-        var uri = URI.create("http://localhost:8000/" + objectId + "/file1/content");
+        var uri = URI.create("http://localhost:8000/" + objectId + "/files/file1/content");
         var request = HttpRequest.newBuilder(uri).GET().build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(404, response.statusCode());
@@ -143,7 +143,7 @@ public class OcflHttpTest {
         Assertions.assertEquals(404, response.statusCode());
         Assertions.assertEquals("testsuite:1/file1 not found", response.body());
         //now test success
-        uri = URI.create("http://localhost:8000/" + objectId + "/afile/content");
+        uri = URI.create("http://localhost:8000/" + objectId + "/files/afile/content");
         request = HttpRequest.newBuilder(uri).GET().build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
@@ -164,7 +164,7 @@ public class OcflHttpTest {
         ocflHttp.writeFileToObject(objectId,
                 new ByteArrayInputStream(contents.getBytes(StandardCharsets.UTF_8)),
                 "biggerfile", new VersionInfo(), false);
-        uri = URI.create("http://localhost:8000/" + objectId + "/biggerfile/content");
+        uri = URI.create("http://localhost:8000/" + objectId + "/files/biggerfile/content");
         request = HttpRequest.newBuilder(uri).GET().build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(contents, response.body());
@@ -214,7 +214,7 @@ public class OcflHttpTest {
     @Test
     public void testUploadFile() throws Exception {
         var objectId = "testsuite:1";
-        var uri = URI.create("http://localhost:8000/" + objectId + "/file1?message=adding%20file1&username=someone&useraddress=someone%40school.edu");
+        var uri = URI.create("http://localhost:8000/" + objectId + "/files/file1?message=adding%20file1&username=someone&useraddress=someone%40school.edu");
         var request = HttpRequest.newBuilder(uri)
                 .POST(HttpRequest.BodyPublishers.ofString("content")).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
@@ -246,7 +246,7 @@ public class OcflHttpTest {
         }
 
         //test PUT to a non-existent file
-        uri = URI.create("http://localhost:8000/" + objectId + "/nonexistent");
+        uri = URI.create("http://localhost:8000/" + objectId + "/files/nonexistent");
         request = HttpRequest.newBuilder(uri)
                 .PUT(HttpRequest.BodyPublishers.ofString("content")).build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
@@ -291,7 +291,7 @@ class FilePoster implements Runnable {
 
     public void run() {
         var objectId = "testsuite:1";
-        var uri = URI.create("http://localhost:8000/" + objectId + "/file1?message=adding%20file1&username=someone&useraddress=someone%40school.edu");
+        var uri = URI.create("http://localhost:8000/" + objectId + "/files/file1?message=adding%20file1&username=someone&useraddress=someone%40school.edu");
         var request = HttpRequest.newBuilder(uri)
                 .POST(HttpRequest.BodyPublishers.ofString("content")).build();
         var client = HttpClient.newHttpClient();

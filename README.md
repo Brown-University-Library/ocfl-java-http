@@ -9,13 +9,13 @@ API
     - returns {"OCFL ROOT": ...} as JSON
 - GET /<object_id>/files
     - returns {"files": {"file1": {}}} as JSON
-- GET /<object_id>/<file_name>/content returns file contents
+- GET /<object_id>/files/<file_name>/content returns file contents
     - use "Range" header to request partial file contents
-- POST /<object_id>/<file_name>
+- POST /<object_id>/files/<file_name>
     - url params: message, username, useraddress - these get added to OCFL version info
     - body: the contents to be stored in <file_name> in OCFL
     - fails if <file_name> is already in the OCFL object
-- PUT /<object_id>/<file_name>
+- PUT /<object_id>/files/<file_name>
     - url params: same as for POST
     - body: same as for POST
     - fails if <file_name> isn't already in the OCFL
