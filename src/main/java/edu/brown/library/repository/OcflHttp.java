@@ -31,9 +31,11 @@ import static edu.wisc.library.ocfl.api.OcflOption.OVERWRITE;
 
 public class OcflHttp extends AbstractHandler {
 
-    final Pattern ObjectIdFilesPattern = Pattern.compile("^/([a-zA-Z0-9:]+)/files$");
-    final Pattern ObjectIdPathContentPattern = Pattern.compile("^/([a-zA-Z0-9:]+)/([a-zA-Z0-9:]+)/content$");
-    final Pattern ObjectIdPathPattern = Pattern.compile("^/([a-zA-Z0-9:]+)/([a-zA-Z0-9:]+)$");
+    final String objectIdRegex = "[a-zA-Z0-9:]+";
+    final String fileNameRegex = "[a-zA-Z0-9:]+";
+    final Pattern ObjectIdFilesPattern = Pattern.compile("^/(" + objectIdRegex + ")/files$");
+    final Pattern ObjectIdPathContentPattern = Pattern.compile("^/(" + objectIdRegex + ")/files/(" + fileNameRegex + ")/content$");
+    final Pattern ObjectIdPathPattern = Pattern.compile("^/(" + objectIdRegex + ")/files/(" + fileNameRegex + ")$");
     final long ChunkSize = 1000L;
 
     private Path repoRoot;
