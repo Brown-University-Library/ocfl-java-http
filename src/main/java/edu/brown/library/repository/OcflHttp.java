@@ -61,22 +61,23 @@ public class OcflHttp extends AbstractHandler {
         repo.updateObject(ObjectVersionId.head(objectId), versionInfo, updater -> {
                     if(overwrite) {
                         updater.writeFile(content, path, OVERWRITE);
-                    }
-                    else {
+                    } else {
                         updater.writeFile(content, path);
                     }
                 });
     }
 
-    void writeFilesToObject(String objectId,
-                            Collection<Part> parts,
-                            VersionInfo versionInfo)
+    void writeFilesToObject(String objectId, Collection<Part> parts, VersionInfo versionInfo, boolean overwrite)
     {
-
         repo.updateObject(ObjectVersionId.head(objectId), versionInfo, updater -> {
             try {
                 for (Part p : parts) {
-                    updater.writeFile(p.getInputStream(), p.getSubmittedFileName());
+                    var fileName = p.getSubmittedFileName();
+                    if(overwrite) {
+                        updater.writeFile(p.getInputStream(), fileName, OVERWRITE);
+                    } else {
+                        updater.writeFile(p.getInputStream(), fileName);
+                    }
                 }
             } catch(IOException e) {
                 throw new UncheckedIOException(e);
@@ -133,8 +134,36 @@ public class OcflHttp extends AbstractHandler {
             throws IOException, ServletException
     {
         var versionInfo = new VersionInfo();
-        writeFilesToObject(objectId, request.getParts(), versionInfo);
-        response.setStatus(HttpServletResponse.SC_CREATED);
+        try {
+            writeFilesToObject(objectId, request.getParts(), versionInfo, false);
+            response.setStatus(HttpServletResponse.SC_CREATED);
+        } catch(OverwriteException e) {
+            response.setStatus(HttpServletResponse.SC_CONFLICT);
+        }
+    }
+
+    void handleObjectFilesPut(HttpServletRequest request,
+                               HttpServletResponse response,
+                               String objectId)
+            throws IOException, ServletException
+    {
+        var versionInfo = new VersionInfo();
+        //check that all files exist
+        if(repo.containsObject(objectId)) {
+            var object = repo.getObject(ObjectVersionId.head(objectId));
+            for (Part p : request.getParts()) {
+                var fileName = p.getSubmittedFileName();
+                if (!object.containsFile(fileName)) {
+                    response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                    return;
+                }
+            }
+            writeFilesToObject(objectId, request.getParts(), versionInfo, true);
+            response.setStatus(HttpServletResponse.SC_CREATED);
+        }
+        else {
+            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+        }
     }
 
     void handleObjectPathGetHead(HttpServletRequest request,
@@ -294,9 +323,20 @@ public class OcflHttp extends AbstractHandler {
                 try {
                     handleObjectFilesPost(request, response, objectId);
                 }
-                catch (Exception e) {
-                    System.out.println("post exc: " + e);
+                catch(Exception e) {
+                    System.out.println(e);
                     throw e;
+                }
+            }
+            else {
+                if(method.equals("PUT")) {
+                    try {
+                        handleObjectFilesPut(request, response, objectId);
+                    }
+                    catch(Exception e) {
+                        System.out.println(e);
+                        throw e;
+                    }
                 }
             }
         }
