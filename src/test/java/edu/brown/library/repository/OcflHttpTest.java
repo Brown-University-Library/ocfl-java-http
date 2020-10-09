@@ -255,6 +255,32 @@ public class OcflHttpTest {
     }
 
     @Test
+    public void testUploadMultipleFiles() throws Exception {
+        var objectId = "testsuite:1";
+        var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20multiple%20files&username=someone&useraddress=someone%40school.edu");
+        var file1Contents = "... contents of file1.txt ...";
+        var multipartData = "--AaB03x\r\n" +
+                            "Content-Disposition: form-data; name=\"file1.txt\"; filename=\"file1.txt\"\r\n" +
+                            "\r\n" +
+                            file1Contents + "\r\n" +
+                            "--AaB03x\r\n" +
+                            "Content-Disposition: form-data; name=\"file2.txt\"; filename=\"file2.txt\"\r\n" +
+                            "\r\n" +
+                            "...contents of file2.txt...\r\n" +
+                            "--AaB03x--\r\n";
+        var request = HttpRequest.newBuilder(uri)
+                .header("Content-Type", "multipart/form-data; boundary=AaB03x")
+                .POST(HttpRequest.BodyPublishers.ofString(multipartData)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(201, response.statusCode());
+        var object = ocflHttp.repo.getObject(ObjectVersionId.head(objectId));
+        var files = object.getFiles();
+        try (var stream = object.getFile("file1.txt").getStream()) {
+            Assertions.assertEquals(file1Contents, new String(stream.readAllBytes()));
+        }
+    }
+
+    @Test
     public void testConcurrentWrites() throws Exception {
         //https://jodah.net/testing-multi-threaded-code
         var doneSignal = new CountDownLatch(2);

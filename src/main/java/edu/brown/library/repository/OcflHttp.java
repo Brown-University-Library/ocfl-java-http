@@ -1,15 +1,20 @@
 package edu.brown.library.repository;
 
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import javax.json.Json;
 import javax.json.JsonObject;
+import javax.servlet.MultipartConfigElement;
+import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.Part;
 
 import edu.wisc.library.ocfl.api.model.OcflObjectVersion;
 import org.eclipse.jetty.server.Server;
@@ -37,6 +42,7 @@ public class OcflHttp extends AbstractHandler {
     final Pattern ObjectIdPathContentPattern = Pattern.compile("^/(" + objectIdRegex + ")/files/(" + fileNameRegex + ")/content$");
     final Pattern ObjectIdPathPattern = Pattern.compile("^/(" + objectIdRegex + ")/files/(" + fileNameRegex + ")$");
     final long ChunkSize = 1000L;
+    private static final MultipartConfigElement MULTI_PART_CONFIG = new MultipartConfigElement(System.getProperty("java.io.tmpdir"));
 
     private Path repoRoot;
     OcflRepository repo;
@@ -60,6 +66,22 @@ public class OcflHttp extends AbstractHandler {
                         updater.writeFile(content, path);
                     }
                 });
+    }
+
+    void writeFilesToObject(String objectId,
+                            Collection<Part> parts,
+                            VersionInfo versionInfo)
+    {
+
+        repo.updateObject(ObjectVersionId.head(objectId), versionInfo, updater -> {
+            try {
+                for (Part p : parts) {
+                    updater.writeFile(p.getInputStream(), p.getSubmittedFileName());
+                }
+            } catch(IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
     }
 
     JsonObject getRootOutput() {
@@ -103,6 +125,16 @@ public class OcflHttp extends AbstractHandler {
             response.setStatus(HttpServletResponse.SC_CONFLICT);
             response.getWriter().print(objectId + "/" + path + " already exists. Use PUT to overwrite it.");
         }
+    }
+
+    void handleObjectFilesPost(HttpServletRequest request,
+                               HttpServletResponse response,
+                               String objectId)
+            throws IOException, ServletException
+    {
+        var versionInfo = new VersionInfo();
+        writeFilesToObject(objectId, request.getParts(), versionInfo);
+        response.setStatus(HttpServletResponse.SC_CREATED);
     }
 
     void handleObjectPathGetHead(HttpServletRequest request,
@@ -232,27 +264,41 @@ public class OcflHttp extends AbstractHandler {
         }
     }
 
-    void handleObjectFiles(HttpServletResponse response,
-                      String objectId)
-        throws IOException
+    void handleObjectFiles(HttpServletRequest request,
+                           HttpServletResponse response,
+                           String objectId)
+        throws IOException, ServletException
     {
-        if(repo.containsObject(objectId)) {
-            var version = repo.describeVersion(ObjectVersionId.head(objectId));
-            var files = version.getFiles();
-            var emptyOutput = Json.createObjectBuilder();
-            var filesOutput = Json.createObjectBuilder();
-            for (FileDetails f : files) {
-                filesOutput.add(f.getPath(), emptyOutput);
+        var method = request.getMethod();
+        if(method.equals("GET")) {
+            if (repo.containsObject(objectId)) {
+                var version = repo.describeVersion(ObjectVersionId.head(objectId));
+                var files = version.getFiles();
+                var emptyOutput = Json.createObjectBuilder();
+                var filesOutput = Json.createObjectBuilder();
+                for (FileDetails f : files) {
+                    filesOutput.add(f.getPath(), emptyOutput);
+                }
+                var output = Json.createObjectBuilder().add("files", filesOutput).build();
+                response.setStatus(HttpServletResponse.SC_OK);
+                response.addHeader("Accept-Ranges", "bytes");
+                var writer = Json.createWriter(response.getWriter());
+                writer.writeObject(output);
+            } else {
+                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                response.getWriter().print("object " + objectId + " not found");
             }
-            var output = Json.createObjectBuilder().add("files", filesOutput).build();
-            response.setStatus(HttpServletResponse.SC_OK);
-            response.addHeader("Accept-Ranges", "bytes");
-            var writer = Json.createWriter(response.getWriter());
-            writer.writeObject(output);
         }
         else {
-            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-            response.getWriter().print("object " + objectId + " not found");
+            if(method.equals("POST")) {
+                try {
+                    handleObjectFilesPost(request, response, objectId);
+                }
+                catch (Exception e) {
+                    System.out.println("post exc: " + e);
+                    throw e;
+                }
+            }
         }
     }
 
@@ -260,8 +306,11 @@ public class OcflHttp extends AbstractHandler {
                        Request baseRequest,
                        HttpServletRequest request,
                        HttpServletResponse response)
-            throws IOException
+            throws IOException, ServletException
     {
+        if (request.getContentType() != null && request.getContentType().startsWith("multipart/form-data")) {
+            request.setAttribute("org.eclipse.jetty.multipartConfig", MULTI_PART_CONFIG); //should be Request.__MULTIPART_CONFIG_ELEMENT, but that didn't compile
+        }
         var pathInfo = request.getPathInfo();
         if (pathInfo.equals("/")) {
             handleRoot(response);
@@ -270,7 +319,7 @@ public class OcflHttp extends AbstractHandler {
             var matcher = ObjectIdFilesPattern.matcher(pathInfo);
             if(matcher.matches()) {
                 var objectId = matcher.group(1);
-                handleObjectFiles(response, objectId);
+                handleObjectFiles(request, response, objectId);
             }
             else {
                 var matcher2 = ObjectIdPathContentPattern.matcher(pathInfo);
