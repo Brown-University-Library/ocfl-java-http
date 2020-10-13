@@ -236,6 +236,7 @@ public class OcflHttpTest {
         Assertions.assertEquals("testsuite:1/file1 already exists. Use PUT to update it.", response.body());
 
         //now test that a PUT to an existing file succeeds
+        uri = URI.create("http://localhost:8000/" + objectId + "/files/file1?message=updating%20file1&username=someoneelse&useraddress=someoneelse%40school.edu");
         request = HttpRequest.newBuilder(uri)
                 .PUT(HttpRequest.BodyPublishers.ofString("content update")).build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
@@ -244,6 +245,10 @@ public class OcflHttpTest {
         try (var stream = object.getFile("file1").getStream()) {
             Assertions.assertEquals("content update", new String(stream.readAllBytes()));
         }
+        Assertions.assertEquals("updating file1", object.getVersionInfo().getMessage());
+        user = object.getVersionInfo().getUser();
+        Assertions.assertEquals("someoneelse", user.getName());
+        Assertions.assertEquals("someoneelse@school.edu", user.getAddress());
 
         //test PUT to a non-existent file
         uri = URI.create("http://localhost:8000/" + objectId + "/files/nonexistent");

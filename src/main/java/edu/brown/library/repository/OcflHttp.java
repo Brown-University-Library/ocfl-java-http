@@ -98,42 +98,7 @@ public class OcflHttp extends AbstractHandler {
         writer.writeObject(output);
     }
 
-    void handleObjectPathPost(HttpServletRequest request,
-                              HttpServletResponse response,
-                              String objectId,
-                              String path)
-            throws IOException
-    {
-        try {
-            var versionInfo = new VersionInfo();
-            var params = request.getParameterMap();
-            var messageParam = params.get("message");
-            if(messageParam.length > 0) {
-                versionInfo.setMessage(messageParam[0]);
-            }
-            var userNameParam = params.get("username");
-            if(userNameParam.length > 0) {
-                var userName = userNameParam[0];
-                var userAddressParam = params.get("useraddress");
-                var userAddress = "";
-                if(userAddressParam.length > 0) {
-                    userAddress = userAddressParam[0];
-                }
-                versionInfo.setUser(userName, userAddress);
-            }
-            writeFileToObject(objectId, request.getInputStream(), path, versionInfo, false);
-            response.setStatus(HttpServletResponse.SC_CREATED);
-        } catch(OverwriteException e) {
-            response.setStatus(HttpServletResponse.SC_CONFLICT);
-            response.getWriter().print(objectId + "/" + path + " already exists. Use PUT to update it.");
-        }
-    }
-
-    void handleObjectFilesPost(HttpServletRequest request,
-                               HttpServletResponse response,
-                               String objectId)
-            throws IOException, ServletException
-    {
+    VersionInfo getVersionInfo(HttpServletRequest request) {
         var versionInfo = new VersionInfo();
         var params = request.getParameterMap();
         var messageParam = params.get("message");
@@ -150,6 +115,31 @@ public class OcflHttp extends AbstractHandler {
             }
             versionInfo.setUser(userName, userAddress);
         }
+        return versionInfo;
+    }
+
+    void handleObjectPathPost(HttpServletRequest request,
+                              HttpServletResponse response,
+                              String objectId,
+                              String path)
+            throws IOException
+    {
+        var versionInfo = getVersionInfo(request);
+        try {
+            writeFileToObject(objectId, request.getInputStream(), path, versionInfo, false);
+            response.setStatus(HttpServletResponse.SC_CREATED);
+        } catch(OverwriteException e) {
+            response.setStatus(HttpServletResponse.SC_CONFLICT);
+            response.getWriter().print(objectId + "/" + path + " already exists. Use PUT to update it.");
+        }
+    }
+
+    void handleObjectFilesPost(HttpServletRequest request,
+                               HttpServletResponse response,
+                               String objectId)
+            throws IOException, ServletException
+    {
+        var versionInfo = getVersionInfo(request);
         //if object exists, make sure none of the files exist already
         if(repo.containsObject(objectId)) {
             var object = repo.getObject(ObjectVersionId.head(objectId));
@@ -179,22 +169,7 @@ public class OcflHttp extends AbstractHandler {
                                String objectId)
             throws IOException, ServletException
     {
-        var versionInfo = new VersionInfo();
-        var params = request.getParameterMap();
-        var messageParam = params.get("message");
-        if(messageParam.length > 0) {
-            versionInfo.setMessage(messageParam[0]);
-        }
-        var userNameParam = params.get("username");
-        if(userNameParam.length > 0) {
-            var userName = userNameParam[0];
-            var userAddressParam = params.get("useraddress");
-            var userAddress = "";
-            if(userAddressParam.length > 0) {
-                userAddress = userAddressParam[0];
-            }
-            versionInfo.setUser(userName, userAddress);
-        }
+        var versionInfo = getVersionInfo(request);
         if(repo.containsObject(objectId)) {
             var object = repo.getObject(ObjectVersionId.head(objectId));
             //check that all files exist
@@ -296,7 +271,8 @@ public class OcflHttp extends AbstractHandler {
             throws IOException
     {
         if(object.containsFile(path)) {
-            writeFileToObject(objectId, request.getInputStream(), path, new VersionInfo(), true);
+            var versionInfo = getVersionInfo(request);
+            writeFileToObject(objectId, request.getInputStream(), path, versionInfo, true);
             response.setStatus(HttpServletResponse.SC_CREATED);
         }
         else {
