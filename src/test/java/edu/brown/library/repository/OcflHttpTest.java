@@ -233,7 +233,7 @@ public class OcflHttpTest {
                 .POST(HttpRequest.BodyPublishers.ofString("content update")).build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(409, response.statusCode());
-        Assertions.assertEquals("testsuite:1/file1 already exists. Use PUT to overwrite it.", response.body());
+        Assertions.assertEquals("testsuite:1/file1 already exists. Use PUT to update it.", response.body());
 
         //now test that a PUT to an existing file succeeds
         request = HttpRequest.newBuilder(uri)
@@ -277,6 +277,7 @@ public class OcflHttpTest {
                 .PUT(HttpRequest.BodyPublishers.ofString(multipartData)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(404, response.statusCode());
+        Assertions.assertEquals("testsuite:1 doesn't exist. Use POST to create it with these files.", response.body());
         //create object with different file
         ocflHttp.writeFileToObject(objectId,
                 new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)),
@@ -287,6 +288,7 @@ public class OcflHttpTest {
                 .PUT(HttpRequest.BodyPublishers.ofString(multipartData)).build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(404, response.statusCode());
+        Assertions.assertEquals("files [file1.txt, file2.txt] don't exist. Use POST to create them.", response.body());
         //now post the files - success
         request = HttpRequest.newBuilder(uri)
                 .header("Content-Type", contentTypeHeader)
@@ -323,6 +325,7 @@ public class OcflHttpTest {
                 .POST(HttpRequest.BodyPublishers.ofString(newMultipartData)).build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(409, response.statusCode());
+        Assertions.assertEquals("files [file1.txt, file2.txt] already exist. Use PUT to update them.", response.body());
     }
 
     @Test

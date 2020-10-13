@@ -1,13 +1,14 @@
 package edu.brown.library.repository;
 
-import java.io.*;
-import java.nio.charset.StandardCharsets;
+import java.io.InputStream;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 import javax.json.Json;
 import javax.json.JsonObject;
 import javax.servlet.MultipartConfigElement;
@@ -124,7 +125,7 @@ public class OcflHttp extends AbstractHandler {
             response.setStatus(HttpServletResponse.SC_CREATED);
         } catch(OverwriteException e) {
             response.setStatus(HttpServletResponse.SC_CONFLICT);
-            response.getWriter().print(objectId + "/" + path + " already exists. Use PUT to overwrite it.");
+            response.getWriter().print(objectId + "/" + path + " already exists. Use PUT to update it.");
         }
     }
 
@@ -134,6 +135,22 @@ public class OcflHttp extends AbstractHandler {
             throws IOException, ServletException
     {
         var versionInfo = new VersionInfo();
+        //if object exists, make sure none of the files exist already
+        if(repo.containsObject(objectId)) {
+            var object = repo.getObject(ObjectVersionId.head(objectId));
+            var existingFiles = new ArrayList<String>();
+            for (Part p : request.getParts()) {
+                var fileName = p.getSubmittedFileName();
+                if (object.containsFile(fileName)) {
+                    existingFiles.add(fileName);
+                }
+            }
+            if (!existingFiles.isEmpty()) {
+                response.setStatus(HttpServletResponse.SC_CONFLICT);
+                response.getWriter().print("files " + existingFiles + " already exist. Use PUT to update them.");
+                return;
+            }
+        }
         try {
             writeFilesToObject(objectId, request.getParts(), versionInfo, false);
             response.setStatus(HttpServletResponse.SC_CREATED);
@@ -148,21 +165,27 @@ public class OcflHttp extends AbstractHandler {
             throws IOException, ServletException
     {
         var versionInfo = new VersionInfo();
-        //check that all files exist
         if(repo.containsObject(objectId)) {
             var object = repo.getObject(ObjectVersionId.head(objectId));
+            //check that all files exist
+            var nonExistentFiles = new ArrayList<String>();
             for (Part p : request.getParts()) {
                 var fileName = p.getSubmittedFileName();
                 if (!object.containsFile(fileName)) {
-                    response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-                    return;
+                    nonExistentFiles.add(fileName);
                 }
+            }
+            if(!nonExistentFiles.isEmpty()) {
+                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                response.getWriter().print("files " + nonExistentFiles + " don't exist. Use POST to create them.");
+                return;
             }
             writeFilesToObject(objectId, request.getParts(), versionInfo, true);
             response.setStatus(HttpServletResponse.SC_CREATED);
         }
         else {
             response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            response.getWriter().print(objectId + " doesn't exist. Use POST to create it with these files.");
         }
     }
 
