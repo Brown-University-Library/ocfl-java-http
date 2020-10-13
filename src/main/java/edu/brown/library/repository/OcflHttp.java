@@ -135,6 +135,21 @@ public class OcflHttp extends AbstractHandler {
             throws IOException, ServletException
     {
         var versionInfo = new VersionInfo();
+        var params = request.getParameterMap();
+        var messageParam = params.get("message");
+        if(messageParam.length > 0) {
+            versionInfo.setMessage(messageParam[0]);
+        }
+        var userNameParam = params.get("username");
+        if(userNameParam.length > 0) {
+            var userName = userNameParam[0];
+            var userAddressParam = params.get("useraddress");
+            var userAddress = "";
+            if(userAddressParam.length > 0) {
+                userAddress = userAddressParam[0];
+            }
+            versionInfo.setUser(userName, userAddress);
+        }
         //if object exists, make sure none of the files exist already
         if(repo.containsObject(objectId)) {
             var object = repo.getObject(ObjectVersionId.head(objectId));
@@ -165,6 +180,21 @@ public class OcflHttp extends AbstractHandler {
             throws IOException, ServletException
     {
         var versionInfo = new VersionInfo();
+        var params = request.getParameterMap();
+        var messageParam = params.get("message");
+        if(messageParam.length > 0) {
+            versionInfo.setMessage(messageParam[0]);
+        }
+        var userNameParam = params.get("username");
+        if(userNameParam.length > 0) {
+            var userName = userNameParam[0];
+            var userAddressParam = params.get("useraddress");
+            var userAddress = "";
+            if(userAddressParam.length > 0) {
+                userAddress = userAddressParam[0];
+            }
+            versionInfo.setUser(userName, userAddress);
+        }
         if(repo.containsObject(objectId)) {
             var object = repo.getObject(ObjectVersionId.head(objectId));
             //check that all files exist

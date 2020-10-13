@@ -271,6 +271,7 @@ public class OcflHttpTest {
                             "\r\n" +
                             "...contents of file2.txt...\r\n" +
                             "--" + boundary + "--\r\n";
+
         //try putting these files - fails because object doesn't exist
         var request = HttpRequest.newBuilder(uri)
                 .header("Content-Type", contentTypeHeader)
@@ -278,10 +279,12 @@ public class OcflHttpTest {
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(404, response.statusCode());
         Assertions.assertEquals("testsuite:1 doesn't exist. Use POST to create it with these files.", response.body());
+
         //create object with different file
         ocflHttp.writeFileToObject(objectId,
                 new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)),
                 "initial_file.txt", new VersionInfo(), false);
+
         //try putting files again - should fail now because those files don't exist
         request = HttpRequest.newBuilder(uri)
                 .header("Content-Type", contentTypeHeader)
@@ -289,6 +292,7 @@ public class OcflHttpTest {
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(404, response.statusCode());
         Assertions.assertEquals("files [file1.txt, file2.txt] don't exist. Use POST to create them.", response.body());
+
         //now post the files - success
         request = HttpRequest.newBuilder(uri)
                 .header("Content-Type", contentTypeHeader)
@@ -300,7 +304,13 @@ public class OcflHttpTest {
         try (var stream = object.getFile("file1.txt").getStream()) {
             Assertions.assertEquals(file1Contents, new String(stream.readAllBytes()));
         }
+        Assertions.assertEquals("adding multiple files", object.getVersionInfo().getMessage());
+        var user = object.getVersionInfo().getUser();
+        Assertions.assertEquals("someone", user.getName());
+        Assertions.assertEquals("someone@school.edu", user.getAddress());
+
         //now put the files - should succeed
+        uri = URI.create("http://localhost:8000/" + objectId + "/files?message=updating%20multiple%20files&username=someoneelse&useraddress=someoneelse%40school.edu");
         var newMultipartData = "--" + boundary + "\r\n" +
                 file1ContentDisposition + "\r\n" +
                 "\r\n" +
@@ -319,6 +329,11 @@ public class OcflHttpTest {
         try (var stream = object.getFile("file1.txt").getStream()) {
             Assertions.assertEquals("new file1 contents", new String(stream.readAllBytes()));
         }
+        Assertions.assertEquals("updating multiple files", object.getVersionInfo().getMessage());
+        user = object.getVersionInfo().getUser();
+        Assertions.assertEquals("someoneelse", user.getName());
+        Assertions.assertEquals("someoneelse@school.edu", user.getAddress());
+
         //posting the files should fail now
         request = HttpRequest.newBuilder(uri)
                 .header("Content-Type", contentTypeHeader)
