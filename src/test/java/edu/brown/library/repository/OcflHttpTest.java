@@ -386,8 +386,9 @@ class FilePoster implements Runnable {
     public void run() {
         var objectId = "testsuite:1";
         var uri = URI.create("http://localhost:8000/" + objectId + "/files/file1?message=adding%20file1&username=someone&useraddress=someone%40school.edu");
+        var contents = "abcdefghij".repeat(4000);
         var request = HttpRequest.newBuilder(uri)
-                .POST(HttpRequest.BodyPublishers.ofString("content")).build();
+                .POST(HttpRequest.BodyPublishers.ofString(contents)).build();
         var client = HttpClient.newHttpClient();
         try {
             var response = client.send(request, HttpResponse.BodyHandlers.ofString());
