@@ -378,7 +378,7 @@ class FilePoster implements Runnable {
                     failure = "ObjectOutOfSyncException";
                 }
                 else {
-                    failure = e.toString();
+                    failure = "unexpected response: " + statusCode + " - " + body;
                 }
             }
         }
