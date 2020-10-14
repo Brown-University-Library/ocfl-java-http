@@ -2,6 +2,7 @@ package edu.brown.library.repository;
 
 import java.io.IOException;
 import java.io.ByteArrayInputStream;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.URI;
@@ -123,7 +124,7 @@ public class OcflHttpTest {
         request = HttpRequest.newBuilder(URI.create(url)).build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(404, response.statusCode());
-        Assertions.assertEquals("object testsuite:notfound not found", response.body());
+        Assertions.assertEquals("testsuite:notfound not found", response.body());
     }
 
     @Test
@@ -213,17 +214,20 @@ public class OcflHttpTest {
 
     @Test
     public void testUploadFile() throws Exception {
-        var objectId = "testsuite:1";
-        var uri = URI.create("http://localhost:8000/" + objectId + "/files/file1?message=adding%20file1&username=someone&useraddress=someone%40school.edu");
+        var objectId = "tĕst- suite_:1";
+        var encodedObjectId = URLEncoder.encode(objectId, StandardCharsets.UTF_8.toString());
+        var file1Name = "some:-thing_ filĕ.txt";
+        var encodedFile1Name = URLEncoder.encode(file1Name, StandardCharsets.UTF_8.toString());
+        var uri = URI.create("http://localhost:8000/" + encodedObjectId + "/files/" + encodedFile1Name + "?message=adding%20" + encodedFile1Name + "&username=someone&useraddress=someone%40school.edu");
         var request = HttpRequest.newBuilder(uri)
                 .POST(HttpRequest.BodyPublishers.ofString("content")).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(201, response.statusCode());
         var object = ocflHttp.repo.getObject(ObjectVersionId.head(objectId));
-        try (var stream = object.getFile("file1").getStream()) {
+        try (var stream = object.getFile(file1Name).getStream()) {
             Assertions.assertEquals("content", new String(stream.readAllBytes()));
         }
-        Assertions.assertEquals("adding file1", object.getVersionInfo().getMessage());
+        Assertions.assertEquals("adding " + file1Name, object.getVersionInfo().getMessage());
         var user = object.getVersionInfo().getUser();
         Assertions.assertEquals("someone", user.getName());
         Assertions.assertEquals("someone@school.edu", user.getAddress());
@@ -233,30 +237,30 @@ public class OcflHttpTest {
                 .POST(HttpRequest.BodyPublishers.ofString("content update")).build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(409, response.statusCode());
-        Assertions.assertEquals("testsuite:1/file1 already exists. Use PUT to update it.", response.body());
+        Assertions.assertEquals(objectId + "/" + file1Name + " already exists. Use PUT to update it.", response.body());
 
         //now test that a PUT to an existing file succeeds
-        uri = URI.create("http://localhost:8000/" + objectId + "/files/file1?message=updating%20file1&username=someoneelse&useraddress=someoneelse%40school.edu");
+        uri = URI.create("http://localhost:8000/" + encodedObjectId + "/files/" + encodedFile1Name + "?message=updating%20" + encodedFile1Name + "&username=someoneelse&useraddress=someoneelse%40school.edu");
         request = HttpRequest.newBuilder(uri)
                 .PUT(HttpRequest.BodyPublishers.ofString("content update")).build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(201, response.statusCode());
         object = ocflHttp.repo.getObject(ObjectVersionId.head(objectId));
-        try (var stream = object.getFile("file1").getStream()) {
+        try (var stream = object.getFile(file1Name).getStream()) {
             Assertions.assertEquals("content update", new String(stream.readAllBytes()));
         }
-        Assertions.assertEquals("updating file1", object.getVersionInfo().getMessage());
+        Assertions.assertEquals("updating " + file1Name, object.getVersionInfo().getMessage());
         user = object.getVersionInfo().getUser();
         Assertions.assertEquals("someoneelse", user.getName());
         Assertions.assertEquals("someoneelse@school.edu", user.getAddress());
 
         //test PUT to a non-existent file
-        uri = URI.create("http://localhost:8000/" + objectId + "/files/nonexistent");
+        uri = URI.create("http://localhost:8000/" + encodedObjectId + "/files/nonexistent");
         request = HttpRequest.newBuilder(uri)
                 .PUT(HttpRequest.BodyPublishers.ofString("content")).build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(404, response.statusCode());
-        Assertions.assertEquals("testsuite:1/nonexistent doesn't exist. Use POST to create it.", response.body());
+        Assertions.assertEquals(objectId + "/nonexistent doesn't exist. Use POST to create it.", response.body());
     }
 
     @Test
