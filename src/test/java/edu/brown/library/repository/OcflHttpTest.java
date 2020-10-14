@@ -233,9 +233,10 @@ public class OcflHttpTest {
                 .POST(HttpRequest.BodyPublishers.ofString("content update")).build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(409, response.statusCode());
-        Assertions.assertEquals("testsuite:1/file1 already exists. Use PUT to overwrite it.", response.body());
+        Assertions.assertEquals("testsuite:1/file1 already exists. Use PUT to update it.", response.body());
 
         //now test that a PUT to an existing file succeeds
+        uri = URI.create("http://localhost:8000/" + objectId + "/files/file1?message=updating%20file1&username=someoneelse&useraddress=someoneelse%40school.edu");
         request = HttpRequest.newBuilder(uri)
                 .PUT(HttpRequest.BodyPublishers.ofString("content update")).build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
@@ -244,6 +245,10 @@ public class OcflHttpTest {
         try (var stream = object.getFile("file1").getStream()) {
             Assertions.assertEquals("content update", new String(stream.readAllBytes()));
         }
+        Assertions.assertEquals("updating file1", object.getVersionInfo().getMessage());
+        user = object.getVersionInfo().getUser();
+        Assertions.assertEquals("someoneelse", user.getName());
+        Assertions.assertEquals("someoneelse@school.edu", user.getAddress());
 
         //test PUT to a non-existent file
         uri = URI.create("http://localhost:8000/" + objectId + "/files/nonexistent");
@@ -252,6 +257,95 @@ public class OcflHttpTest {
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(404, response.statusCode());
         Assertions.assertEquals("testsuite:1/nonexistent doesn't exist. Use POST to create it.", response.body());
+    }
+
+    @Test
+    public void testUploadMultipleFiles() throws Exception {
+        var objectId = "testsuite:1";
+        var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20multiple%20files&username=someone&useraddress=someone%40school.edu");
+        var contentTypeHeader = "multipart/form-data; boundary=AaB03x";
+        var boundary = "AaB03x";
+        var file1ContentDisposition = "Content-Disposition: form-data; name=\"file1.txt\"; filename=\"file1.txt\"";
+        var file1Contents = "... contents of file1.txt ...";
+        var multipartData = "--" + boundary + "\r\n" +
+                            file1ContentDisposition + "\r\n" +
+                            "\r\n" +
+                            file1Contents + "\r\n" +
+                            "--" + boundary + "\r\n" +
+                            "Content-Disposition: form-data; name=\"file2.txt\"; filename=\"file2.txt\"\r\n" +
+                            "\r\n" +
+                            "...contents of file2.txt...\r\n" +
+                            "--" + boundary + "--\r\n";
+
+        //try putting these files - fails because object doesn't exist
+        var request = HttpRequest.newBuilder(uri)
+                .header("Content-Type", contentTypeHeader)
+                .PUT(HttpRequest.BodyPublishers.ofString(multipartData)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(404, response.statusCode());
+        Assertions.assertEquals("testsuite:1 doesn't exist. Use POST to create it with these files.", response.body());
+
+        //create object with different file
+        ocflHttp.writeFileToObject(objectId,
+                new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)),
+                "initial_file.txt", new VersionInfo(), false);
+
+        //try putting files again - should fail now because those files don't exist
+        request = HttpRequest.newBuilder(uri)
+                .header("Content-Type", contentTypeHeader)
+                .PUT(HttpRequest.BodyPublishers.ofString(multipartData)).build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(404, response.statusCode());
+        Assertions.assertEquals("files [file1.txt, file2.txt] don't exist. Use POST to create them.", response.body());
+
+        //now post the files - success
+        request = HttpRequest.newBuilder(uri)
+                .header("Content-Type", contentTypeHeader)
+                .POST(HttpRequest.BodyPublishers.ofString(multipartData)).build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(201, response.statusCode());
+        var object = ocflHttp.repo.getObject(ObjectVersionId.head(objectId));
+        var files = object.getFiles();
+        try (var stream = object.getFile("file1.txt").getStream()) {
+            Assertions.assertEquals(file1Contents, new String(stream.readAllBytes()));
+        }
+        Assertions.assertEquals("adding multiple files", object.getVersionInfo().getMessage());
+        var user = object.getVersionInfo().getUser();
+        Assertions.assertEquals("someone", user.getName());
+        Assertions.assertEquals("someone@school.edu", user.getAddress());
+
+        //now put the files - should succeed
+        uri = URI.create("http://localhost:8000/" + objectId + "/files?message=updating%20multiple%20files&username=someoneelse&useraddress=someoneelse%40school.edu");
+        var newMultipartData = "--" + boundary + "\r\n" +
+                file1ContentDisposition + "\r\n" +
+                "\r\n" +
+                "new file1 contents\r\n" +
+                "--" + boundary + "\r\n" +
+                "Content-Disposition: form-data; name=\"file2.txt\"; filename=\"file2.txt\"\r\n" +
+                "\r\n" +
+                "... new contents of file2.txt...\r\n" +
+                "--" + boundary + "--\r\n";
+        request = HttpRequest.newBuilder(uri)
+                .header("Content-Type", contentTypeHeader)
+                .PUT(HttpRequest.BodyPublishers.ofString(newMultipartData)).build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(201, response.statusCode());
+        object = ocflHttp.repo.getObject(ObjectVersionId.head(objectId));
+        try (var stream = object.getFile("file1.txt").getStream()) {
+            Assertions.assertEquals("new file1 contents", new String(stream.readAllBytes()));
+        }
+        Assertions.assertEquals("updating multiple files", object.getVersionInfo().getMessage());
+        user = object.getVersionInfo().getUser();
+        Assertions.assertEquals("someoneelse", user.getName());
+        Assertions.assertEquals("someoneelse@school.edu", user.getAddress());
+
+        //posting the files should fail now
+        request = HttpRequest.newBuilder(uri)
+                .header("Content-Type", contentTypeHeader)
+                .POST(HttpRequest.BodyPublishers.ofString(newMultipartData)).build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(409, response.statusCode());
+        Assertions.assertEquals("files [file1.txt, file2.txt] already exist. Use PUT to update them.", response.body());
     }
 
     @Test
@@ -292,8 +386,9 @@ class FilePoster implements Runnable {
     public void run() {
         var objectId = "testsuite:1";
         var uri = URI.create("http://localhost:8000/" + objectId + "/files/file1?message=adding%20file1&username=someone&useraddress=someone%40school.edu");
+        var contents = "abcdefghij".repeat(4000);
         var request = HttpRequest.newBuilder(uri)
-                .POST(HttpRequest.BodyPublishers.ofString("content")).build();
+                .POST(HttpRequest.BodyPublishers.ofString(contents)).build();
         var client = HttpClient.newHttpClient();
         try {
             var response = client.send(request, HttpResponse.BodyHandlers.ofString());
@@ -307,7 +402,7 @@ class FilePoster implements Runnable {
                     failure = "ObjectOutOfSyncException";
                 }
                 else {
-                    failure = e.toString();
+                    failure = "unexpected response: " + statusCode + " - " + body;
                 }
             }
         }

@@ -1,15 +1,21 @@
 package edu.brown.library.repository;
 
-import java.io.IOException;
 import java.io.InputStream;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.regex.Pattern;
 import javax.json.Json;
 import javax.json.JsonObject;
+import javax.servlet.MultipartConfigElement;
+import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.Part;
 
 import edu.wisc.library.ocfl.api.model.OcflObjectVersion;
 import org.eclipse.jetty.server.Server;
@@ -37,6 +43,7 @@ public class OcflHttp extends AbstractHandler {
     final Pattern ObjectIdPathContentPattern = Pattern.compile("^/(" + objectIdRegex + ")/files/(" + fileNameRegex + ")/content$");
     final Pattern ObjectIdPathPattern = Pattern.compile("^/(" + objectIdRegex + ")/files/(" + fileNameRegex + ")$");
     final long ChunkSize = 1000L;
+    private static final MultipartConfigElement MULTI_PART_CONFIG = new MultipartConfigElement(System.getProperty("java.io.tmpdir"));
 
     private Path repoRoot;
     OcflRepository repo;
@@ -55,11 +62,28 @@ public class OcflHttp extends AbstractHandler {
         repo.updateObject(ObjectVersionId.head(objectId), versionInfo, updater -> {
                     if(overwrite) {
                         updater.writeFile(content, path, OVERWRITE);
-                    }
-                    else {
+                    } else {
                         updater.writeFile(content, path);
                     }
                 });
+    }
+
+    void writeFilesToObject(String objectId, Collection<Part> parts, VersionInfo versionInfo, boolean overwrite)
+    {
+        repo.updateObject(ObjectVersionId.head(objectId), versionInfo, updater -> {
+            try {
+                for (Part p : parts) {
+                    var fileName = p.getSubmittedFileName();
+                    if(overwrite) {
+                        updater.writeFile(p.getInputStream(), fileName, OVERWRITE);
+                    } else {
+                        updater.writeFile(p.getInputStream(), fileName);
+                    }
+                }
+            } catch(IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
     }
 
     JsonObject getRootOutput() {
@@ -74,34 +98,99 @@ public class OcflHttp extends AbstractHandler {
         writer.writeObject(output);
     }
 
+    VersionInfo getVersionInfo(HttpServletRequest request) {
+        var versionInfo = new VersionInfo();
+        var params = request.getParameterMap();
+        var messageParam = params.get("message");
+        if(messageParam.length > 0) {
+            versionInfo.setMessage(messageParam[0]);
+        }
+        var userNameParam = params.get("username");
+        if(userNameParam.length > 0) {
+            var userName = userNameParam[0];
+            var userAddressParam = params.get("useraddress");
+            var userAddress = "";
+            if(userAddressParam.length > 0) {
+                userAddress = userAddressParam[0];
+            }
+            versionInfo.setUser(userName, userAddress);
+        }
+        return versionInfo;
+    }
+
     void handleObjectPathPost(HttpServletRequest request,
                               HttpServletResponse response,
                               String objectId,
                               String path)
             throws IOException
     {
+        var versionInfo = getVersionInfo(request);
         try {
-            var versionInfo = new VersionInfo();
-            var params = request.getParameterMap();
-            var messageParam = params.get("message");
-            if(messageParam.length > 0) {
-                versionInfo.setMessage(messageParam[0]);
-            }
-            var userNameParam = params.get("username");
-            if(userNameParam.length > 0) {
-                var userName = userNameParam[0];
-                var userAddressParam = params.get("useraddress");
-                var userAddress = "";
-                if(userAddressParam.length > 0) {
-                    userAddress = userAddressParam[0];
-                }
-                versionInfo.setUser(userName, userAddress);
-            }
             writeFileToObject(objectId, request.getInputStream(), path, versionInfo, false);
             response.setStatus(HttpServletResponse.SC_CREATED);
         } catch(OverwriteException e) {
             response.setStatus(HttpServletResponse.SC_CONFLICT);
-            response.getWriter().print(objectId + "/" + path + " already exists. Use PUT to overwrite it.");
+            response.getWriter().print(objectId + "/" + path + " already exists. Use PUT to update it.");
+        }
+    }
+
+    void handleObjectFilesPost(HttpServletRequest request,
+                               HttpServletResponse response,
+                               String objectId)
+            throws IOException, ServletException
+    {
+        var versionInfo = getVersionInfo(request);
+        //if object exists, make sure none of the files exist already
+        if(repo.containsObject(objectId)) {
+            var object = repo.getObject(ObjectVersionId.head(objectId));
+            var existingFiles = new ArrayList<String>();
+            for (Part p : request.getParts()) {
+                var fileName = p.getSubmittedFileName();
+                if (object.containsFile(fileName)) {
+                    existingFiles.add(fileName);
+                }
+            }
+            if (!existingFiles.isEmpty()) {
+                response.setStatus(HttpServletResponse.SC_CONFLICT);
+                response.getWriter().print("files " + existingFiles + " already exist. Use PUT to update them.");
+                return;
+            }
+        }
+        try {
+            writeFilesToObject(objectId, request.getParts(), versionInfo, false);
+            response.setStatus(HttpServletResponse.SC_CREATED);
+        } catch(OverwriteException e) {
+            response.setStatus(HttpServletResponse.SC_CONFLICT);
+        }
+    }
+
+    void handleObjectFilesPut(HttpServletRequest request,
+                               HttpServletResponse response,
+                               String objectId)
+            throws IOException, ServletException
+    {
+        var versionInfo = getVersionInfo(request);
+        if(repo.containsObject(objectId)) {
+            var object = repo.getObject(ObjectVersionId.head(objectId));
+            //check that all files exist
+            var nonExistentFiles = new ArrayList<String>();
+            for (Part p : request.getParts()) {
+                var fileName = p.getSubmittedFileName();
+                if (!object.containsFile(fileName)) {
+                    nonExistentFiles.add(fileName);
+                }
+            }
+            if(!nonExistentFiles.isEmpty()) {
+                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                response.getWriter().print("files " + nonExistentFiles + " don't exist. Use POST to create them.");
+                return;
+            }
+            writeFilesToObject(objectId, request.getParts(), versionInfo, true);
+            response.setStatus(HttpServletResponse.SC_CREATED);
+        }
+        else {
+            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            response.getWriter().print(objectId + " doesn't exist. Use POST to create it with these files.");
         }
     }
 
@@ -182,7 +271,8 @@ public class OcflHttp extends AbstractHandler {
             throws IOException
     {
         if(object.containsFile(path)) {
-            writeFileToObject(objectId, request.getInputStream(), path, new VersionInfo(), true);
+            var versionInfo = getVersionInfo(request);
+            writeFileToObject(objectId, request.getInputStream(), path, versionInfo, true);
             response.setStatus(HttpServletResponse.SC_CREATED);
         }
         else {
@@ -232,27 +322,52 @@ public class OcflHttp extends AbstractHandler {
         }
     }
 
-    void handleObjectFiles(HttpServletResponse response,
-                      String objectId)
-        throws IOException
+    void handleObjectFiles(HttpServletRequest request,
+                           HttpServletResponse response,
+                           String objectId)
+        throws IOException, ServletException
     {
-        if(repo.containsObject(objectId)) {
-            var version = repo.describeVersion(ObjectVersionId.head(objectId));
-            var files = version.getFiles();
-            var emptyOutput = Json.createObjectBuilder();
-            var filesOutput = Json.createObjectBuilder();
-            for (FileDetails f : files) {
-                filesOutput.add(f.getPath(), emptyOutput);
+        var method = request.getMethod();
+        if(method.equals("GET")) {
+            if (repo.containsObject(objectId)) {
+                var version = repo.describeVersion(ObjectVersionId.head(objectId));
+                var files = version.getFiles();
+                var emptyOutput = Json.createObjectBuilder();
+                var filesOutput = Json.createObjectBuilder();
+                for (FileDetails f : files) {
+                    filesOutput.add(f.getPath(), emptyOutput);
+                }
+                var output = Json.createObjectBuilder().add("files", filesOutput).build();
+                response.setStatus(HttpServletResponse.SC_OK);
+                response.addHeader("Accept-Ranges", "bytes");
+                var writer = Json.createWriter(response.getWriter());
+                writer.writeObject(output);
+            } else {
+                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                response.getWriter().print("object " + objectId + " not found");
             }
-            var output = Json.createObjectBuilder().add("files", filesOutput).build();
-            response.setStatus(HttpServletResponse.SC_OK);
-            response.addHeader("Accept-Ranges", "bytes");
-            var writer = Json.createWriter(response.getWriter());
-            writer.writeObject(output);
         }
         else {
-            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-            response.getWriter().print("object " + objectId + " not found");
+            if(method.equals("POST")) {
+                try {
+                    handleObjectFilesPost(request, response, objectId);
+                }
+                catch(Exception e) {
+                    System.out.println(e);
+                    throw e;
+                }
+            }
+            else {
+                if(method.equals("PUT")) {
+                    try {
+                        handleObjectFilesPut(request, response, objectId);
+                    }
+                    catch(Exception e) {
+                        System.out.println(e);
+                        throw e;
+                    }
+                }
+            }
         }
     }
 
@@ -260,8 +375,11 @@ public class OcflHttp extends AbstractHandler {
                        Request baseRequest,
                        HttpServletRequest request,
                        HttpServletResponse response)
-            throws IOException
+            throws IOException, ServletException
     {
+        if (request.getContentType() != null && request.getContentType().startsWith("multipart/form-data")) {
+            request.setAttribute("org.eclipse.jetty.multipartConfig", MULTI_PART_CONFIG); //should be Request.__MULTIPART_CONFIG_ELEMENT, but that didn't compile
+        }
         var pathInfo = request.getPathInfo();
         if (pathInfo.equals("/")) {
             handleRoot(response);
@@ -270,7 +388,7 @@ public class OcflHttp extends AbstractHandler {
             var matcher = ObjectIdFilesPattern.matcher(pathInfo);
             if(matcher.matches()) {
                 var objectId = matcher.group(1);
-                handleObjectFiles(response, objectId);
+                handleObjectFiles(request, response, objectId);
             }
             else {
                 var matcher2 = ObjectIdPathContentPattern.matcher(pathInfo);
