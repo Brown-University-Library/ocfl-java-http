@@ -3,6 +3,7 @@ package edu.brown.library.repository;
 import java.io.InputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -37,8 +38,8 @@ import static edu.wisc.library.ocfl.api.OcflOption.OVERWRITE;
 
 public class OcflHttp extends AbstractHandler {
 
-    final String objectIdRegex = "[a-zA-Z0-9:]+";
-    final String fileNameRegex = "[a-zA-Z0-9:]+";
+    final String objectIdRegex = "[-:_. \\p{IsAlphabetic}\\d]+";
+    final String fileNameRegex = "[-:_. \\p{IsAlphabetic}\\d]+";
     final Pattern ObjectIdFilesPattern = Pattern.compile("^/(" + objectIdRegex + ")/files$");
     final Pattern ObjectIdPathContentPattern = Pattern.compile("^/(" + objectIdRegex + ")/files/(" + fileNameRegex + ")/content$");
     final Pattern ObjectIdPathPattern = Pattern.compile("^/(" + objectIdRegex + ")/files/(" + fileNameRegex + ")$");
@@ -86,6 +87,12 @@ public class OcflHttp extends AbstractHandler {
         });
     }
 
+    void setResponseError(HttpServletResponse response, int statusCode, String msg) throws IOException
+    {
+        response.setStatus(statusCode);
+        response.getOutputStream().write(msg.getBytes(StandardCharsets.UTF_8.toString()));
+    }
+
     JsonObject getRootOutput() {
         return Json.createObjectBuilder().add("OCFL ROOT", repoRoot.toString()).build();
     }
@@ -129,8 +136,8 @@ public class OcflHttp extends AbstractHandler {
             writeFileToObject(objectId, request.getInputStream(), path, versionInfo, false);
             response.setStatus(HttpServletResponse.SC_CREATED);
         } catch(OverwriteException e) {
-            response.setStatus(HttpServletResponse.SC_CONFLICT);
-            response.getWriter().print(objectId + "/" + path + " already exists. Use PUT to update it.");
+            var msg = objectId + "/" + path + " already exists. Use PUT to update it.";
+            setResponseError(response, HttpServletResponse.SC_CONFLICT, msg);
         }
     }
 
@@ -151,8 +158,8 @@ public class OcflHttp extends AbstractHandler {
                 }
             }
             if (!existingFiles.isEmpty()) {
-                response.setStatus(HttpServletResponse.SC_CONFLICT);
-                response.getWriter().print("files " + existingFiles + " already exist. Use PUT to update them.");
+                var msg = "files " + existingFiles + " already exist. Use PUT to update them.";
+                setResponseError(response, HttpServletResponse.SC_CONFLICT, msg);
                 return;
             }
         }
@@ -160,7 +167,7 @@ public class OcflHttp extends AbstractHandler {
             writeFilesToObject(objectId, request.getParts(), versionInfo, false);
             response.setStatus(HttpServletResponse.SC_CREATED);
         } catch(OverwriteException e) {
-            response.setStatus(HttpServletResponse.SC_CONFLICT);
+            setResponseError(response, HttpServletResponse.SC_CONFLICT, "");
         }
     }
 
@@ -181,16 +188,16 @@ public class OcflHttp extends AbstractHandler {
                 }
             }
             if(!nonExistentFiles.isEmpty()) {
-                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-                response.getWriter().print("files " + nonExistentFiles + " don't exist. Use POST to create them.");
+                var msg = "files " + nonExistentFiles + " don't exist. Use POST to create them.";
+                setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
                 return;
             }
             writeFilesToObject(objectId, request.getParts(), versionInfo, true);
             response.setStatus(HttpServletResponse.SC_CREATED);
         }
         else {
-            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-            response.getWriter().print(objectId + " doesn't exist. Use POST to create it with these files.");
+            var msg = objectId + " doesn't exist. Use POST to create it with these files.";
+            setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
         }
     }
 
@@ -258,8 +265,8 @@ public class OcflHttp extends AbstractHandler {
             }
         }
         else {
-            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-            response.getWriter().print(objectId + "/" + path + " not found");
+            var msg = objectId + "/" + path + " not found";
+            setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
         }
     }
 
@@ -276,8 +283,8 @@ public class OcflHttp extends AbstractHandler {
             response.setStatus(HttpServletResponse.SC_CREATED);
         }
         else {
-            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-            response.getWriter().print(objectId + "/" + path + " doesn't exist. Use POST to create it.");
+            var msg = objectId + "/" + path + " doesn't exist. Use POST to create it.";
+            setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
         }
     }
 
@@ -293,8 +300,8 @@ public class OcflHttp extends AbstractHandler {
                 var object = repo.getObject(ObjectVersionId.head(objectId));
                 handleObjectPathGetHead(request, response, objectId, object, path);
             } catch(NotFoundException e) {
-                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-                response.getWriter().print(objectId + " not found");
+                var msg = objectId + " not found";
+                setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
             }
         }
     }
@@ -316,8 +323,7 @@ public class OcflHttp extends AbstractHandler {
                     handleObjectPathPut(request, response, objectId, object, path);
                 }
             } catch(NotFoundException e) {
-                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-                response.getWriter().print(objectId + " not found");
+                setResponseError(response, HttpServletResponse.SC_NOT_FOUND, objectId + " not found");
             }
         }
     }
@@ -343,29 +349,16 @@ public class OcflHttp extends AbstractHandler {
                 var writer = Json.createWriter(response.getWriter());
                 writer.writeObject(output);
             } else {
-                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-                response.getWriter().print("object " + objectId + " not found");
+                setResponseError(response, HttpServletResponse.SC_NOT_FOUND, objectId + " not found");
             }
         }
         else {
             if(method.equals("POST")) {
-                try {
-                    handleObjectFilesPost(request, response, objectId);
-                }
-                catch(Exception e) {
-                    System.out.println(e);
-                    throw e;
-                }
+                handleObjectFilesPost(request, response, objectId);
             }
             else {
                 if(method.equals("PUT")) {
-                    try {
-                        handleObjectFilesPut(request, response, objectId);
-                    }
-                    catch(Exception e) {
-                        System.out.println(e);
-                        throw e;
-                    }
+                    handleObjectFilesPut(request, response, objectId);
                 }
             }
         }
@@ -380,7 +373,7 @@ public class OcflHttp extends AbstractHandler {
         if (request.getContentType() != null && request.getContentType().startsWith("multipart/form-data")) {
             request.setAttribute("org.eclipse.jetty.multipartConfig", MULTI_PART_CONFIG); //should be Request.__MULTIPART_CONFIG_ELEMENT, but that didn't compile
         }
-        var pathInfo = request.getPathInfo();
+        var pathInfo = request.getPathInfo().replace("+", " ");
         if (pathInfo.equals("/")) {
             handleRoot(response);
         }
