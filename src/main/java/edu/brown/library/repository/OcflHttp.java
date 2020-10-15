@@ -3,6 +3,7 @@ package edu.brown.library.repository;
 import java.io.InputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -38,8 +39,8 @@ import static edu.wisc.library.ocfl.api.OcflOption.OVERWRITE;
 
 public class OcflHttp extends AbstractHandler {
 
-    final String objectIdRegex = "[-:_. \\p{IsAlphabetic}\\d]+";
-    final String fileNameRegex = "[-:_. \\p{IsAlphabetic}\\d]+";
+    final String objectIdRegex = "[-:_. %a-zA-Z0-9]+";
+    final String fileNameRegex = "[-:_. %a-zA-Z0-9]+";
     final Pattern ObjectIdFilesPattern = Pattern.compile("^/(" + objectIdRegex + ")/files$");
     final Pattern ObjectIdPathContentPattern = Pattern.compile("^/(" + objectIdRegex + ")/files/(" + fileNameRegex + ")/content$");
     final Pattern ObjectIdPathPattern = Pattern.compile("^/(" + objectIdRegex + ")/files/(" + fileNameRegex + ")$");
@@ -373,28 +374,29 @@ public class OcflHttp extends AbstractHandler {
         if (request.getContentType() != null && request.getContentType().startsWith("multipart/form-data")) {
             request.setAttribute("org.eclipse.jetty.multipartConfig", MULTI_PART_CONFIG); //should be Request.__MULTIPART_CONFIG_ELEMENT, but that didn't compile
         }
-        var pathInfo = request.getPathInfo().replace("+", " ");
-        if (pathInfo.equals("/")) {
+        var requestURI = request.getRequestURI();
+        var updatedRequestURI = requestURI.replace("+", "%20");
+        if (updatedRequestURI.equals("/")) {
             handleRoot(response);
         }
         else {
-            var matcher = ObjectIdFilesPattern.matcher(pathInfo);
+            var matcher = ObjectIdFilesPattern.matcher(updatedRequestURI);
             if(matcher.matches()) {
                 var objectId = matcher.group(1);
                 handleObjectFiles(request, response, objectId);
             }
             else {
-                var matcher2 = ObjectIdPathContentPattern.matcher(pathInfo);
+                var matcher2 = ObjectIdPathContentPattern.matcher(updatedRequestURI);
                 if (matcher2.matches()) {
-                    var objectId = matcher2.group(1);
-                    var path = matcher2.group(2);
+                    var objectId = URLDecoder.decode(matcher2.group(1), StandardCharsets.UTF_8.toString());
+                    var path = URLDecoder.decode(matcher2.group(2), StandardCharsets.UTF_8.toString());
                     handleObjectPathContent(request, response, objectId, path);
                 }
                 else {
-                    var matcher3 = ObjectIdPathPattern.matcher(pathInfo);
+                    var matcher3 = ObjectIdPathPattern.matcher(updatedRequestURI);
                     if (matcher3.matches()) {
-                        var objectId = matcher3.group(1);
-                        var path = matcher3.group(2);
+                        var objectId = URLDecoder.decode(matcher3.group(1), StandardCharsets.UTF_8.toString());
+                        var path = URLDecoder.decode(matcher3.group(2), StandardCharsets.UTF_8.toString());
                         handleObjectPath(request, response, objectId, path);
                     }
                     else {
