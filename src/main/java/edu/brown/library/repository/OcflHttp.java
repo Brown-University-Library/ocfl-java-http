@@ -45,6 +45,7 @@ public class OcflHttp extends AbstractHandler {
     final Pattern ObjectIdPathContentPattern = Pattern.compile("^/(" + objectIdRegex + ")/files/(" + fileNameRegex + ")/content$");
     final Pattern ObjectIdPathPattern = Pattern.compile("^/(" + objectIdRegex + ")/files/(" + fileNameRegex + ")$");
     final long ChunkSize = 1000L;
+    public static String IfNoneMatchHeader = "If-None-Match";
     private static final MultipartConfigElement MULTI_PART_CONFIG = new MultipartConfigElement(System.getProperty("java.io.tmpdir"));
 
     private Path repoRoot;
@@ -220,6 +221,15 @@ public class OcflHttp extends AbstractHandler {
             var filePath = repoRoot.resolve(file.getStorageRelativePath());
             var fileSize = Files.size(filePath);
             if(request.getMethod().equals("GET")) {
+                var digestAlgorithm = repo.describeObject(objectId).getDigestAlgorithm();
+                var digestValue = file.getFixity().get(digestAlgorithm);
+                var ifNoneMatchHeader = request.getHeader(OcflHttp.IfNoneMatchHeader);
+                if(ifNoneMatchHeader != null && !ifNoneMatchHeader.isEmpty()) {
+                    if(ifNoneMatchHeader.replace("\"", "").equals(digestValue)) {
+                        response.setStatus(HttpServletResponse.SC_NOT_MODIFIED);
+                        return;
+                    }
+                }
                 var rangeHeader = request.getHeader("Range");
                 var start = 0L;
                 var end = fileSize - 1L; //end value is included in the range
@@ -238,6 +248,9 @@ public class OcflHttp extends AbstractHandler {
                         response.addHeader("Content-Range", contentRange);
                         return;
                     }
+                }
+                else {
+                    response.addHeader("ETag", "\"" + digestValue + "\"");
                 }
                 try (var stream = file.getStream().enableFixityCheck(false)) {
                     try (var outputStream = response.getOutputStream()) {
