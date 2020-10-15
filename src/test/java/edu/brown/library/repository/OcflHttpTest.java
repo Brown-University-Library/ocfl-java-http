@@ -137,8 +137,9 @@ public class OcflHttpTest {
         Assertions.assertEquals(404, response.statusCode());
         Assertions.assertEquals("testsuite:1 not found", response.body());
         //now test object exists, but missing file
+        var fileContents = "data";
         ocflHttp.writeFileToObject(objectId,
-                new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)),
+                new ByteArrayInputStream(fileContents.getBytes(StandardCharsets.UTF_8)),
                 "afile", new VersionInfo(), false);
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(404, response.statusCode());
@@ -151,7 +152,23 @@ public class OcflHttpTest {
         Assertions.assertEquals("bytes", response.headers().firstValue("Accept-Ranges").get());
         Assertions.assertEquals("4", response.headers().firstValue("Content-Length").get());
         Assertions.assertEquals("text/plain", response.headers().firstValue("Content-Type").get());
-        Assertions.assertEquals("data", response.body());
+        var fileETag = "\"77c7ce9a5d86bb386d443bb96390faa120633158699c8844c30b13ab0bf92760b7e4416aea397db91b4ac0e5dd56b8ef7e4b066162ab1fdc088319ce6defc876\"";
+        Assertions.assertEquals(fileETag, response.headers().firstValue("ETag").get());
+        Assertions.assertEquals(fileContents, response.body());
+
+        //test handling if ETag hasn't changed
+        request = HttpRequest.newBuilder(uri).header(OcflHttp.IfNoneMatchHeader, fileETag).GET().build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(304, response.statusCode());
+        Assertions.assertEquals("", response.body());
+
+        //test handling if ETag has changed
+        request = HttpRequest.newBuilder(uri).header(OcflHttp.IfNoneMatchHeader, "asdf").GET().build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(200, response.statusCode());
+        Assertions.assertEquals(fileETag, response.headers().firstValue("ETag").get());
+        Assertions.assertEquals(fileContents, response.body());
+
         //test HEAD request
         request = HttpRequest.newBuilder(uri).method("HEAD", HttpRequest.BodyPublishers.noBody()).build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
@@ -160,6 +177,7 @@ public class OcflHttpTest {
         Assertions.assertEquals("4", response.headers().firstValue("Content-Length").get());
         Assertions.assertEquals("text/plain", response.headers().firstValue("Content-Type").get());
         Assertions.assertEquals("", response.body());
+
         //test with a larger file
         var contents = "abcdefghij".repeat(4000);
         ocflHttp.writeFileToObject(objectId,
