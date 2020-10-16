@@ -7,6 +7,10 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -46,6 +50,8 @@ public class OcflHttp extends AbstractHandler {
     final Pattern ObjectIdPathPattern = Pattern.compile("^/(" + objectIdRegex + ")/files/(" + fileNameRegex + ")$");
     final long ChunkSize = 1000L;
     public static String IfNoneMatchHeader = "If-None-Match";
+    public static String IfModifiedSinceHeader = "If-Modified-Since";
+    public static DateTimeFormatter IfModifiedFormatter = DateTimeFormatter.ofPattern("E, dd LLL uuuu kk:mm:ss O");
     private static final MultipartConfigElement MULTI_PART_CONFIG = new MultipartConfigElement(System.getProperty("java.io.tmpdir"));
 
     private Path repoRoot;
@@ -221,11 +227,22 @@ public class OcflHttp extends AbstractHandler {
             var filePath = repoRoot.resolve(file.getStorageRelativePath());
             var fileSize = Files.size(filePath);
             if(request.getMethod().equals("GET")) {
+                var fileChangeHistory = repo.fileChangeHistory(objectId, path);
+                //make sure lastModified is converted to UTC if needed
+                var fileLastModifiedUTC = fileChangeHistory.getMostRecent().getTimestamp().withOffsetSameInstant(ZoneOffset.UTC);
                 var digestAlgorithm = repo.describeObject(objectId).getDigestAlgorithm();
                 var digestValue = file.getFixity().get(digestAlgorithm);
                 var ifNoneMatchHeader = request.getHeader(OcflHttp.IfNoneMatchHeader);
                 if(ifNoneMatchHeader != null && !ifNoneMatchHeader.isEmpty()) {
                     if(ifNoneMatchHeader.replace("\"", "").equals(digestValue)) {
+                        response.setStatus(HttpServletResponse.SC_NOT_MODIFIED);
+                        return;
+                    }
+                }
+                var ifModifiedSinceHeader = request.getHeader(OcflHttp.IfModifiedSinceHeader);
+                if(ifModifiedSinceHeader != null && !ifModifiedSinceHeader.isEmpty()) {
+                    var headerLastModifiedUTC = OffsetDateTime.parse(ifModifiedSinceHeader, OcflHttp.IfModifiedFormatter);
+                    if(!fileLastModifiedUTC.truncatedTo(ChronoUnit.SECONDS).isAfter(headerLastModifiedUTC)) {
                         response.setStatus(HttpServletResponse.SC_NOT_MODIFIED);
                         return;
                     }
@@ -250,6 +267,8 @@ public class OcflHttp extends AbstractHandler {
                     }
                 }
                 else {
+                    var lastModifiedHeader = fileLastModifiedUTC.format(OcflHttp.IfModifiedFormatter);
+                    response.addHeader("Last-Modified", lastModifiedHeader);
                     response.addHeader("ETag", "\"" + digestValue + "\"");
                 }
                 try (var stream = file.getStream().enableFixityCheck(false)) {
