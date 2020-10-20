@@ -8,11 +8,8 @@ import java.net.http.HttpRequest;
 import java.net.URI;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -35,31 +32,6 @@ public class OcflHttpTest {
     Path workDir;
     HttpClient client;
 
-    private void deleteDirectory(Path dir) throws IOException {
-        //https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/nio/file/FileVisitor.html
-        Files.walkFileTree(dir, new SimpleFileVisitor<Path>() {
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
-                    throws IOException
-            {
-                Files.delete(file);
-                return FileVisitResult.CONTINUE;
-            }
-            @Override
-            public FileVisitResult postVisitDirectory(Path dir, IOException e)
-                    throws IOException
-            {
-                if (e == null) {
-                    Files.delete(dir);
-                    return FileVisitResult.CONTINUE;
-                } else {
-                    //directory iteration failed
-                    throw e;
-                }
-            }
-        });
-    }
-
     @BeforeEach
     private void setupServer() throws Exception {
         tmpRoot = Files.createTempDirectory("ocfl-java-http");
@@ -74,8 +46,8 @@ public class OcflHttpTest {
     @AfterEach
     private void stopServer() throws Exception {
         server.stop();
-        deleteDirectory(tmpRoot);
-        deleteDirectory(workDir);
+        TestUtils.deleteDirectory(tmpRoot);
+        TestUtils.deleteDirectory(workDir);
     }
 
     @Test

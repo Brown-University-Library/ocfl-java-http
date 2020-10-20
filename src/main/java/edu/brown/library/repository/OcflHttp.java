@@ -59,9 +59,12 @@ public class OcflHttp extends AbstractHandler {
 
     public OcflHttp(Path root, Path workDir) throws Exception {
         repoRoot = root;
-        repo = new OcflRepositoryBuilder()
-                .layoutConfig(new HashedTruncatedNTupleIdConfig())
-                .storage(FileSystemOcflStorage.builder().repositoryRoot(repoRoot).build())
+        var repoBuilder = new OcflRepositoryBuilder();
+        if (!Files.list(repoRoot).findAny().isPresent()) {
+            //if repoRoot is empty, we'll initialize it with our default config
+            repoBuilder.layoutConfig(new HashedTruncatedNTupleIdConfig());
+        }
+        repo = repoBuilder.storage(FileSystemOcflStorage.builder().repositoryRoot(repoRoot).build())
                 .workDir(workDir)
                 .build();
     }
