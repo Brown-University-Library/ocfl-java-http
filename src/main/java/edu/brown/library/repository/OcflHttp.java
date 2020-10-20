@@ -274,6 +274,7 @@ public class OcflHttp extends AbstractHandler {
                     var lastModifiedHeader = fileLastModifiedUTC.format(OcflHttp.IfModifiedFormatter);
                     response.addHeader("Last-Modified", lastModifiedHeader);
                     response.addHeader("ETag", "\"" + digestValue + "\"");
+                    response.addHeader("Content-Disposition", "attachment; filename=\"" + path + "\"");
                 }
                 try (var stream = file.getStream().enableFixityCheck(false)) {
                     try (var outputStream = response.getOutputStream()) {

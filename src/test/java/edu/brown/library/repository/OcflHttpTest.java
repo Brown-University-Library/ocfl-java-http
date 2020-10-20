@@ -125,6 +125,7 @@ public class OcflHttpTest {
         Assertions.assertEquals("bytes", response.headers().firstValue("Accept-Ranges").get());
         Assertions.assertEquals("4", response.headers().firstValue("Content-Length").get());
         Assertions.assertEquals("text/plain", response.headers().firstValue("Content-Type").get());
+        Assertions.assertEquals("attachment; filename=\"afile\"", response.headers().firstValue("Content-Disposition").get());
         var lastModifiedHeader = response.headers().firstValue("Last-Modified").get();
         Assertions.assertTrue(lastModifiedHeader.endsWith(" GMT"));
         var fileETag = "\"77c7ce9a5d86bb386d443bb96390faa120633158699c8844c30b13ab0bf92760b7e4416aea397db91b4ac0e5dd56b8ef7e4b066162ab1fdc088319ce6defc876\"";
