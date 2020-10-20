@@ -1,6 +1,7 @@
 package edu.brown.library.repository;
 
 import java.io.InputStream;
+import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URLDecoder;
@@ -454,6 +455,16 @@ public class OcflHttp extends AbstractHandler {
                 Or, could mimetypes be added (through an extension) to inventory.json?
         2. The detection might not be as fast as we want: we could use some kind of caching (with pre-warming).
          */
+        if(!is.markSupported()) {
+            is = new BufferedInputStream(is);
+        }
+        is.mark(100);
+        var bytes = is.readNBytes(5);
+        //use single byte char set, so it shouldn't error on bytes that could be invalid for UTF-8
+        if(new String(bytes, StandardCharsets.ISO_8859_1).equals("<?xml")) {
+            return "application/xml";
+        }
+        is.reset();
         var tika = new Tika();
         return tika.detect(is, name);
     }

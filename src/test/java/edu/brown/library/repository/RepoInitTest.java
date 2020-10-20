@@ -37,9 +37,12 @@ public class RepoInitTest {
     }
 
     @AfterEach
-    private void stopServer() throws Exception {
+    private void teardown() throws Exception {
         TestUtils.deleteDirectory(tmpRoot);
         TestUtils.deleteDirectory(workDir);
+        if(server != null && server.isRunning()) {
+            server.stop();
+        }
     }
 
     @Test
