@@ -466,7 +466,11 @@ public class OcflHttp extends AbstractHandler {
         }
         is.reset();
         var tika = new Tika();
-        return tika.detect(is, name);
+        var tikaMimetype = tika.detect(is, name);
+        if(tikaMimetype.equals("image/x-raw-adobe")) {
+            return "image/x-adobe-dng";
+        }
+        return tikaMimetype;
     }
 
     public static HashMap<String, Long> parseRangeHeader(String rangeHeader, Long fileSize) {

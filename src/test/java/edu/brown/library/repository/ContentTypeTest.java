@@ -21,7 +21,7 @@ public class ContentTypeTest {
     public void dng() throws Exception {
         try(InputStream is = new ByteArrayInputStream("".getBytes(StandardCharsets.UTF_8))) {
             var mimetype = OcflHttp.getContentType(is, "file.dng");
-            Assertions.assertEquals("image/x-raw-adobe", mimetype);
+            Assertions.assertEquals("image/x-adobe-dng", mimetype);
         }
     }
 
