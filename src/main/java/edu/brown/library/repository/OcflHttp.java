@@ -1,6 +1,7 @@
 package edu.brown.library.repository;
 
 import java.io.InputStream;
+import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URLDecoder;
@@ -59,9 +60,12 @@ public class OcflHttp extends AbstractHandler {
 
     public OcflHttp(Path root, Path workDir) throws Exception {
         repoRoot = root;
-        repo = new OcflRepositoryBuilder()
-                .layoutConfig(new HashedTruncatedNTupleIdConfig())
-                .storage(FileSystemOcflStorage.builder().repositoryRoot(repoRoot).build())
+        var repoBuilder = new OcflRepositoryBuilder();
+        if (!Files.list(repoRoot).findAny().isPresent()) {
+            //if repoRoot is empty, we'll initialize it with our default config
+            repoBuilder.layoutConfig(new HashedTruncatedNTupleIdConfig());
+        }
+        repo = repoBuilder.storage(FileSystemOcflStorage.builder().repositoryRoot(repoRoot).build())
                 .workDir(workDir)
                 .build();
     }
@@ -270,6 +274,7 @@ public class OcflHttp extends AbstractHandler {
                     var lastModifiedHeader = fileLastModifiedUTC.format(OcflHttp.IfModifiedFormatter);
                     response.addHeader("Last-Modified", lastModifiedHeader);
                     response.addHeader("ETag", "\"" + digestValue + "\"");
+                    response.addHeader("Content-Disposition", "attachment; filename=\"" + path + "\"");
                 }
                 try (var stream = file.getStream().enableFixityCheck(false)) {
                     try (var outputStream = response.getOutputStream()) {
@@ -451,8 +456,22 @@ public class OcflHttp extends AbstractHandler {
                 Or, could mimetypes be added (through an extension) to inventory.json?
         2. The detection might not be as fast as we want: we could use some kind of caching (with pre-warming).
          */
+        if(!is.markSupported()) {
+            is = new BufferedInputStream(is);
+        }
+        is.mark(100);
+        var bytes = is.readNBytes(5);
+        //use single byte char set, so it shouldn't error on bytes that could be invalid for UTF-8
+        if(new String(bytes, StandardCharsets.ISO_8859_1).equals("<?xml")) {
+            return "application/xml";
+        }
+        is.reset();
         var tika = new Tika();
-        return tika.detect(is, name);
+        var tikaMimetype = tika.detect(is, name);
+        if(tikaMimetype.equals("image/x-raw-adobe")) {
+            return "image/x-adobe-dng";
+        }
+        return tikaMimetype;
     }
 
     public static HashMap<String, Long> parseRangeHeader(String rangeHeader, Long fileSize) {
