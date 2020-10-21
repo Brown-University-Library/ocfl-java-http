@@ -22,8 +22,10 @@ jobs:
         java-version: 11
     - name: Build with Maven
       run: mvn -B verify --file pom.xml
+    - name: Copy and Rename jar
+      run: cp ${{ github.workspace }}/target/ocfl-java-http-0.1-SNAPSHOT-launcher.jar ocfl-java-http-${{ github.sha }}.jar
     - name: 'Upload Artifact'
       uses: actions/upload-artifact@v2
       with:
         name: ocfl-java-http-${{ github.sha }}.jar
-        path: ${{ github.workspace }}/target/ocfl-java-http-0.1-SNAPSHOT-launcher.jar
+        path: ocfl-java-http-${{ github.sha }}.jar
