@@ -274,6 +274,51 @@ public class OcflHttpTest {
     }
 
     @Test
+    public void testChecksums() throws Exception {
+        var objectId = "testsuite:1";
+        var contents = "content";
+        var md5Digest = "9a0364b9e99bb480dd25e1f0284c8555";
+        var sha512Digest = "b2d1d285b5199c85f988d03649c37e44fd3dde01e5d69c50fef90651962f48110e9340b60d49a479c4c0b53f5f07d690686dd87d2481937a512e8b85ee7c617f";
+        ocflHttp.writeFileToObject(objectId,
+                new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)),
+                "initial_file.txt", new VersionInfo(), false);
+
+        //POST invalid checksum
+        var uri = URI.create("http://localhost:8000/" + objectId + "/files/test.txt?checksumtype=MD5&checksum=1");
+        var request = HttpRequest.newBuilder(uri)
+                .POST(HttpRequest.BodyPublishers.ofString(contents)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(409, response.statusCode());
+        Assertions.assertEquals("Expected MD5 digest: 1; Actual: " + md5Digest, response.body());
+
+        //POST valid checksum
+        uri = URI.create("http://localhost:8000/" + objectId + "/files/test.txt?checksumtype=MD5&checksum=" + md5Digest);
+        request = HttpRequest.newBuilder(uri)
+                .POST(HttpRequest.BodyPublishers.ofString(contents)).build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(201, response.statusCode());
+        var object = ocflHttp.repo.getObject(ObjectVersionId.head(objectId));
+        try (var stream = object.getFile("test.txt").getStream()) {
+            Assertions.assertEquals(contents, new String(stream.readAllBytes()));
+        }
+
+        //PUT invalid checksum
+        uri = URI.create("http://localhost:8000/" + objectId + "/files/test.txt?checksumtype=MD5&checksum=1");
+        request = HttpRequest.newBuilder(uri)
+                .PUT(HttpRequest.BodyPublishers.ofString(contents)).build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(409, response.statusCode());
+
+        //PUT valid SHA512 checksum
+        uri = URI.create("http://localhost:8000/" + objectId + "/files/test.txt?checksumtype=SHA-512&checksum=" + sha512Digest);
+        request = HttpRequest.newBuilder(uri)
+                .PUT(HttpRequest.BodyPublishers.ofString(contents)).build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        System.out.println(response.body());
+        Assertions.assertEquals(201, response.statusCode());
+    }
+
+    @Test
     public void testUploadMultipleFiles() throws Exception {
         var objectId = "testsuite:1";
         var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20multiple%20files&username=someone&useraddress=someone%40school.edu");
