@@ -21,10 +21,12 @@ API
     - files if any of the files don't exist
 - POST /<object_id>/files/<file_name>
     - url params: message, username, useraddress - these get added to OCFL version info
+        - checksum, checksumtype - verify that the received data matches what user sent
     - body: the contents to be stored in <file_name> in OCFL
     - fails if <file_name> is already in the OCFL object
 - PUT /<object_id>/files/<file_name>
     - url params: message, username, useraddress - these get added to OCFL version info
+        - checksum, checksumtype - verify that the received data matches what user sent
     - body: the contents to be stored in <file_name> in OCFL
     - fails if <file_name> isn't already in the OCFL
 

@@ -24,6 +24,8 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.Part;
 
+import edu.wisc.library.ocfl.api.exception.FixityCheckException;
+import edu.wisc.library.ocfl.api.io.FixityCheckInputStream;
 import edu.wisc.library.ocfl.api.model.OcflObjectVersion;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.AbstractHandler;
@@ -121,20 +123,36 @@ public class OcflHttp extends AbstractHandler {
         var versionInfo = new VersionInfo();
         var params = request.getParameterMap();
         var messageParam = params.get("message");
-        if(messageParam.length > 0) {
+        if(messageParam != null && messageParam.length > 0) {
             versionInfo.setMessage(messageParam[0]);
         }
         var userNameParam = params.get("username");
-        if(userNameParam.length > 0) {
+        if(userNameParam != null && userNameParam.length > 0) {
             var userName = userNameParam[0];
             var userAddressParam = params.get("useraddress");
             var userAddress = "";
-            if(userAddressParam.length > 0) {
+            if(userAddressParam != null && userAddressParam.length > 0) {
                 userAddress = userAddressParam[0];
             }
             versionInfo.setUser(userName, userAddress);
         }
         return versionInfo;
+    }
+
+    InputStream getInputStream(HttpServletRequest request) throws IOException {
+        var checksumParam = request.getParameter("checksum");
+        InputStream inputStream;
+        if(checksumParam != null && !checksumParam.isEmpty()) {
+            var checksumType = request.getParameter("checksumtype");
+            if(checksumType == null || checksumType.isEmpty()) {
+                checksumType = "MD5";
+            }
+            inputStream = new FixityCheckInputStream(request.getInputStream(), checksumType, checksumParam);
+        }
+        else {
+            inputStream = request.getInputStream();
+        }
+        return inputStream;
     }
 
     void handleObjectPathPost(HttpServletRequest request,
@@ -144,12 +162,40 @@ public class OcflHttp extends AbstractHandler {
             throws IOException
     {
         var versionInfo = getVersionInfo(request);
+        var inputStream = getInputStream(request);
         try {
-            writeFileToObject(objectId, request.getInputStream(), path, versionInfo, false);
+            writeFileToObject(objectId, inputStream, path, versionInfo, false);
             response.setStatus(HttpServletResponse.SC_CREATED);
-        } catch(OverwriteException e) {
+        }
+        catch(OverwriteException e) {
             var msg = objectId + "/" + path + " already exists. Use PUT to update it.";
             setResponseError(response, HttpServletResponse.SC_CONFLICT, msg);
+        }
+        catch(FixityCheckException e) {
+            setResponseError(response, HttpServletResponse.SC_CONFLICT, e.getMessage());
+        }
+    }
+
+    void handleObjectPathPut(HttpServletRequest request,
+                             HttpServletResponse response,
+                             String objectId,
+                             OcflObjectVersion object,
+                             String path)
+            throws IOException
+    {
+        if(object.containsFile(path)) {
+            var versionInfo = getVersionInfo(request);
+            var inputStream = getInputStream(request);
+            try {
+                writeFileToObject(objectId, inputStream, path, versionInfo, true);
+                response.setStatus(HttpServletResponse.SC_CREATED);
+            } catch (FixityCheckException e) {
+                setResponseError(response, HttpServletResponse.SC_CONFLICT, e.getMessage());
+            }
+        }
+        else {
+            var msg = objectId + "/" + path + " doesn't exist. Use POST to create it.";
+            setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
         }
     }
 
@@ -304,24 +350,6 @@ public class OcflHttp extends AbstractHandler {
         }
         else {
             var msg = objectId + "/" + path + " not found";
-            setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
-        }
-    }
-
-    void handleObjectPathPut(HttpServletRequest request,
-                             HttpServletResponse response,
-                             String objectId,
-                             OcflObjectVersion object,
-                             String path)
-            throws IOException
-    {
-        if(object.containsFile(path)) {
-            var versionInfo = getVersionInfo(request);
-            writeFileToObject(objectId, request.getInputStream(), path, versionInfo, true);
-            response.setStatus(HttpServletResponse.SC_CREATED);
-        }
-        else {
-            var msg = objectId + "/" + path + " doesn't exist. Use POST to create it.";
             setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
         }
     }
