@@ -140,17 +140,21 @@ public class OcflHttp extends AbstractHandler {
     }
 
     InputStream getInputStream(HttpServletRequest request) throws IOException {
-        var checksumParam = request.getParameter("checksum");
         InputStream inputStream;
+        var location = request.getParameter("location");
+        if(location != null && !location.isEmpty()) {
+            inputStream = Files.newInputStream(Path.of(location.replace("file://", "")));
+        }
+        else {
+            inputStream = request.getInputStream();
+        }
+        var checksumParam = request.getParameter("checksum");
         if(checksumParam != null && !checksumParam.isEmpty()) {
             var checksumType = request.getParameter("checksumtype");
             if(checksumType == null || checksumType.isEmpty()) {
                 checksumType = "MD5";
             }
-            inputStream = new FixityCheckInputStream(request.getInputStream(), checksumType, checksumParam);
-        }
-        else {
-            inputStream = request.getInputStream();
+            inputStream = new FixityCheckInputStream(inputStream, checksumType, checksumParam);
         }
         return inputStream;
     }
@@ -162,8 +166,8 @@ public class OcflHttp extends AbstractHandler {
             throws IOException
     {
         var versionInfo = getVersionInfo(request);
-        var inputStream = getInputStream(request);
-        try {
+
+        try(var inputStream = getInputStream(request)) {
             writeFileToObject(objectId, inputStream, path, versionInfo, false);
             response.setStatus(HttpServletResponse.SC_CREATED);
         }
@@ -185,8 +189,7 @@ public class OcflHttp extends AbstractHandler {
     {
         if(object.containsFile(path)) {
             var versionInfo = getVersionInfo(request);
-            var inputStream = getInputStream(request);
-            try {
+            try(var inputStream = getInputStream(request)) {
                 writeFileToObject(objectId, inputStream, path, versionInfo, true);
                 response.setStatus(HttpServletResponse.SC_CREATED);
             } catch (FixityCheckException e) {

@@ -274,6 +274,40 @@ public class OcflHttpTest {
     }
 
     @Test
+    public void testLocation() throws Exception {
+        var objectId = "testsuite:1";
+        var contents = "content";
+        ocflHttp.writeFileToObject(objectId,
+                new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)),
+                "initial_file.txt", new VersionInfo(), false);
+        var tmpFile = Files.createTempFile("ocfljavahttp", ".txt");
+        Files.write(tmpFile, contents.getBytes(StandardCharsets.UTF_8));
+        var locationParam = "file://" + tmpFile.toString();
+
+        //POST a file by location
+        var uri = URI.create("http://localhost:8000/" + objectId + "/files/test.txt?location=" + locationParam);
+        var request = HttpRequest.newBuilder(uri)
+                .POST(HttpRequest.BodyPublishers.noBody()).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(201, response.statusCode());
+        var object = ocflHttp.repo.getObject(ObjectVersionId.head(objectId));
+        try (var stream = object.getFile("test.txt").getStream()) {
+            Assertions.assertEquals(contents, new String(stream.readAllBytes()));
+        }
+
+        //PUT a file by location
+        Files.write(tmpFile, "new data".getBytes(StandardCharsets.UTF_8));
+        request = HttpRequest.newBuilder(uri)
+                .PUT(HttpRequest.BodyPublishers.noBody()).build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(201, response.statusCode());
+        object = ocflHttp.repo.getObject(ObjectVersionId.head(objectId));
+        try (var stream = object.getFile("test.txt").getStream()) {
+            Assertions.assertEquals("new data", new String(stream.readAllBytes()));
+        }
+    }
+
+    @Test
     public void testChecksums() throws Exception {
         var objectId = "testsuite:1";
         var contents = "content";

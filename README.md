@@ -18,15 +18,17 @@ API
 - PUT /<object_id>/files
     - url params: message, username, useraddress - these get added to OCFL version info
     - body: multipart/form-data files to be updated in the object
-    - files if any of the files don't exist
+    - fails if any of the files don't exist
 - POST /<object_id>/files/<file_name>
     - url params: message, username, useraddress - these get added to OCFL version info
         - checksum, checksumtype - verify that the received data matches what user sent
-    - body: the contents to be stored in <file_name> in OCFL
+        - location - path to file to add (eg. file:///tmp/file.txt)
+    - body: the contents to be stored in <file_name> in OCFL (if location param wasn't used)
     - fails if <file_name> is already in the OCFL object
 - PUT /<object_id>/files/<file_name>
     - url params: message, username, useraddress - these get added to OCFL version info
         - checksum, checksumtype - verify that the received data matches what user sent
+        - location - path to file
     - body: the contents to be stored in <file_name> in OCFL
     - fails if <file_name> isn't already in the OCFL
 
