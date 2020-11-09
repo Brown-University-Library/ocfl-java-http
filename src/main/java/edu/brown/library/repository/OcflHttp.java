@@ -3,7 +3,6 @@ package edu.brown.library.repository;
 import java.io.InputStream;
 import java.io.BufferedInputStream;
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -13,11 +12,11 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.regex.Pattern;
 import javax.json.Json;
 import javax.json.JsonObject;
+import javax.json.JsonReader;
 import javax.servlet.MultipartConfigElement;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
@@ -83,21 +82,16 @@ public class OcflHttp extends AbstractHandler {
                 });
     }
 
-    void writeFilesToObject(String objectId, Collection<Part> parts, VersionInfo versionInfo, boolean overwrite)
+    void writeFilesToObject(String objectId, HashMap<String, InputStream> files, VersionInfo versionInfo, boolean overwrite)
     {
         repo.updateObject(ObjectVersionId.head(objectId), versionInfo, updater -> {
-            try {
-                for (Part p : parts) {
-                    var fileName = p.getSubmittedFileName();
+                files.forEach((fileName, inputStream) -> {
                     if(overwrite) {
-                        updater.writeFile(p.getInputStream(), fileName, OVERWRITE);
+                        updater.writeFile(inputStream, fileName, OVERWRITE);
                     } else {
-                        updater.writeFile(p.getInputStream(), fileName);
+                        updater.writeFile(inputStream, fileName);
                     }
-                }
-            } catch(IOException e) {
-                throw new UncheckedIOException(e);
-            }
+                });
         });
     }
 
@@ -202,22 +196,47 @@ public class OcflHttp extends AbstractHandler {
         }
     }
 
+    HashMap<String, InputStream> getFiles(HttpServletRequest request) throws IOException, ServletException {
+        var files = new HashMap<String, InputStream>();
+        JsonObject params = null;
+        for(Part p: request.getParts()) {
+            if(p.getName().equals("params")) {
+                JsonReader reader = Json.createReader(p.getInputStream());
+                params = reader.readObject();
+            }
+            else {
+                var fileName = p.getSubmittedFileName();
+                files.put(fileName, p.getInputStream());
+            }
+        }
+        var entries = params.entrySet().iterator();
+        while(entries.hasNext()) {
+            var entry = entries.next();
+            var fileName = entry.getKey();
+            var fileInfo = entry.getValue();
+            var location = fileInfo.asJsonObject().getString("location");
+            var inputStream = Files.newInputStream(Path.of(location.replace("file://", "")));
+            files.put(fileName, inputStream);
+        }
+        return files;
+    }
+
     void handleObjectFilesPost(HttpServletRequest request,
                                HttpServletResponse response,
                                String objectId)
             throws IOException, ServletException
     {
         var versionInfo = getVersionInfo(request);
+        var files = getFiles(request);
         //if object exists, make sure none of the files exist already
         if(repo.containsObject(objectId)) {
             var object = repo.getObject(ObjectVersionId.head(objectId));
             var existingFiles = new ArrayList<String>();
-            for (Part p : request.getParts()) {
-                var fileName = p.getSubmittedFileName();
-                if (object.containsFile(fileName)) {
+            files.forEach((fileName, inputStream) -> {
+                if(object.containsFile(fileName)) {
                     existingFiles.add(fileName);
                 }
-            }
+            });
             if (!existingFiles.isEmpty()) {
                 var msg = "files " + existingFiles + " already exist. Use PUT to update them.";
                 setResponseError(response, HttpServletResponse.SC_CONFLICT, msg);
@@ -225,7 +244,7 @@ public class OcflHttp extends AbstractHandler {
             }
         }
         try {
-            writeFilesToObject(objectId, request.getParts(), versionInfo, false);
+            writeFilesToObject(objectId, files, versionInfo, false);
             response.setStatus(HttpServletResponse.SC_CREATED);
         } catch(OverwriteException e) {
             setResponseError(response, HttpServletResponse.SC_CONFLICT, "");
@@ -238,22 +257,22 @@ public class OcflHttp extends AbstractHandler {
             throws IOException, ServletException
     {
         var versionInfo = getVersionInfo(request);
+        var files = getFiles(request);
         if(repo.containsObject(objectId)) {
             var object = repo.getObject(ObjectVersionId.head(objectId));
             //check that all files exist
             var nonExistentFiles = new ArrayList<String>();
-            for (Part p : request.getParts()) {
-                var fileName = p.getSubmittedFileName();
-                if (!object.containsFile(fileName)) {
+            files.forEach((fileName, inputStream) -> {
+                if(!object.containsFile(fileName)) {
                     nonExistentFiles.add(fileName);
                 }
-            }
+            });
             if(!nonExistentFiles.isEmpty()) {
                 var msg = "files " + nonExistentFiles + " don't exist. Use POST to create them.";
                 setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
                 return;
             }
-            writeFilesToObject(objectId, request.getParts(), versionInfo, true);
+            writeFilesToObject(objectId, files, versionInfo, true);
             response.setStatus(HttpServletResponse.SC_CREATED);
         }
         else {
@@ -423,7 +442,9 @@ public class OcflHttp extends AbstractHandler {
         }
         else {
             if(method.equals("POST")) {
-                handleObjectFilesPost(request, response, objectId);
+                try {
+                    handleObjectFilesPost(request, response, objectId);
+                } catch(Exception e) {System.out.println(e); throw e;}
             }
             else {
                 if(method.equals("PUT")) {
