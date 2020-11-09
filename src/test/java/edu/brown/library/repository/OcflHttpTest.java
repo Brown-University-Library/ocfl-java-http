@@ -31,9 +31,10 @@ public class OcflHttpTest {
     Path tmpRoot;
     Path workDir;
     HttpClient client;
+    String objectId = "testsuite:1";
 
     @BeforeEach
-    private void setupServer() throws Exception {
+    private void setup() throws Exception {
         tmpRoot = Files.createTempDirectory("ocfl-java-http");
         workDir = Files.createTempDirectory("ocfl-work");
         ocflHttp = new OcflHttp(tmpRoot, workDir);
@@ -44,7 +45,7 @@ public class OcflHttpTest {
     }
 
     @AfterEach
-    private void stopServer() throws Exception {
+    private void teardown() throws Exception {
         server.stop();
         TestUtils.deleteDirectory(tmpRoot);
         TestUtils.deleteDirectory(workDir);
@@ -102,7 +103,6 @@ public class OcflHttpTest {
 
     @Test
     public void testGetFileContent() throws Exception {
-        var objectId = "testsuite:1";
         //test non-existent object
         var uri = URI.create("http://localhost:8000/" + objectId + "/files/file1/content");
         var request = HttpRequest.newBuilder(uri).GET().build();
@@ -224,7 +224,7 @@ public class OcflHttpTest {
 
     @Test
     public void testUploadFile() throws Exception {
-        var objectId = "tĕst- suite_:1";
+        objectId = "tĕst- suite_:1"; //override default objectId to test various characters
         var encodedObjectId = URLEncoder.encode(objectId, StandardCharsets.UTF_8.toString());
         var file1Name = "some:-thing_ filĕ+.txt";
         var encodedFile1Name = URLEncoder.encode(file1Name, StandardCharsets.UTF_8.toString());
@@ -275,7 +275,6 @@ public class OcflHttpTest {
 
     @Test
     public void testLocation() throws Exception {
-        var objectId = "testsuite:1";
         var contents = "content";
         ocflHttp.writeFileToObject(objectId,
                 new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)),
@@ -309,7 +308,6 @@ public class OcflHttpTest {
 
     @Test
     public void testChecksums() throws Exception {
-        var objectId = "testsuite:1";
         var contents = "content";
         var md5Digest = "9a0364b9e99bb480dd25e1f0284c8555";
         var sha512Digest = "b2d1d285b5199c85f988d03649c37e44fd3dde01e5d69c50fef90651962f48110e9340b60d49a479c4c0b53f5f07d690686dd87d2481937a512e8b85ee7c617f";
@@ -350,155 +348,6 @@ public class OcflHttpTest {
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         System.out.println(response.body());
         Assertions.assertEquals(201, response.statusCode());
-    }
-
-    @Test
-    public void testUploadMultipleFiles() throws Exception {
-        var objectId = "testsuite:1";
-        var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20multiple%20files&username=someone&useraddress=someone%40school.edu");
-        var boundary = "AaB03x";
-        var contentTypeHeader = "multipart/form-data; boundary=" + boundary;
-        var paramsContentDisposition = "Content-Disposition: form-data; name=\"params\"";
-        var file1ContentDisposition = "Content-Disposition: form-data; name=\"files\"; filename=\"file1.txt\"";
-        var file1Contents = "... contents of file1.txt ...";
-        var multipartData = "--" + boundary + "\r\n" +
-                            paramsContentDisposition + "\r\n" +
-                            "\r\n" +
-                            "{}" + "\r\n" +
-                            "--" + boundary + "\r\n" +
-                            file1ContentDisposition + "\r\n" +
-                            "\r\n" +
-                            file1Contents + "\r\n" +
-                            "--" + boundary + "\r\n" +
-                            "Content-Disposition: form-data; name=\"files\"; filename=\"file2.txt\"\r\n" +
-                            "\r\n" +
-                            "...contents of file2.txt..." + "\r\n" +
-                            "--" + boundary + "--";
-
-        //try putting these files - fails because object doesn't exist
-        var request = HttpRequest.newBuilder(uri)
-                .header("Content-Type", contentTypeHeader)
-                .PUT(HttpRequest.BodyPublishers.ofString(multipartData)).build();
-        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        Assertions.assertEquals(404, response.statusCode());
-        Assertions.assertEquals("testsuite:1 doesn't exist. Use POST to create it with these files.", response.body());
-
-        //initialize object
-        ocflHttp.writeFileToObject(objectId,
-                new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)),
-                "initial_file.txt", new VersionInfo(), false);
-
-        //try putting files again - should fail now because those files don't exist
-        request = HttpRequest.newBuilder(uri)
-                .header("Content-Type", contentTypeHeader)
-                .PUT(HttpRequest.BodyPublishers.ofString(multipartData)).build();
-        response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        Assertions.assertEquals(404, response.statusCode());
-        Assertions.assertEquals("files [file1.txt, file2.txt] don't exist. Use POST to create them.", response.body());
-
-        //now post the files - success
-        request = HttpRequest.newBuilder(uri)
-                .header("Content-Type", contentTypeHeader)
-                .POST(HttpRequest.BodyPublishers.ofString(multipartData)).build();
-        response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        Assertions.assertEquals(201, response.statusCode());
-        var object = ocflHttp.repo.getObject(ObjectVersionId.head(objectId));
-        var files = object.getFiles();
-        try (var stream = object.getFile("file1.txt").getStream()) {
-            Assertions.assertEquals(file1Contents, new String(stream.readAllBytes()));
-        }
-        try (var stream = object.getFile("file2.txt").getStream()) {
-            Assertions.assertEquals("...contents of file2.txt...", new String(stream.readAllBytes()));
-        }
-        Assertions.assertEquals("adding multiple files", object.getVersionInfo().getMessage());
-        var user = object.getVersionInfo().getUser();
-        Assertions.assertEquals("someone", user.getName());
-        Assertions.assertEquals("someone@school.edu", user.getAddress());
-
-        //now put the files - should succeed
-        uri = URI.create("http://localhost:8000/" + objectId + "/files?message=updating%20multiple%20files&username=someoneelse&useraddress=someoneelse%40school.edu");
-        var newMultipartData = "--" + boundary + "\r\n" +
-                paramsContentDisposition + "\r\n" +
-                "\r\n" +
-                "{}" + "\r\n" +
-                "--" + boundary + "\r\n" +
-                "Content-Disposition: form-data; name=\"files\"; filename=\"file1.txt\"" + "\r\n" +
-                "\r\n" +
-                "new file1 contents\r\n" +
-                "--" + boundary + "\r\n" +
-                "Content-Disposition: form-data; name=\"files\"; filename=\"file2.txt\"" + "\r\n" +
-                "\r\n" +
-                "... new contents of file2.txt..." + "\r\n" +
-                "--" + boundary + "--";
-        request = HttpRequest.newBuilder(uri)
-                .header("Content-Type", contentTypeHeader)
-                .PUT(HttpRequest.BodyPublishers.ofString(newMultipartData)).build();
-        response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        Assertions.assertEquals(201, response.statusCode());
-        object = ocflHttp.repo.getObject(ObjectVersionId.head(objectId));
-        try (var stream = object.getFile("file2.txt").getStream()) {
-            Assertions.assertEquals("... new contents of file2.txt...", new String(stream.readAllBytes()));
-        }
-        try (var stream = object.getFile("file1.txt").getStream()) {
-            Assertions.assertEquals("new file1 contents", new String(stream.readAllBytes()));
-        }
-        Assertions.assertEquals("updating multiple files", object.getVersionInfo().getMessage());
-        user = object.getVersionInfo().getUser();
-        Assertions.assertEquals("someoneelse", user.getName());
-        Assertions.assertEquals("someoneelse@school.edu", user.getAddress());
-
-        //posting the files should fail now
-        request = HttpRequest.newBuilder(uri)
-                .header("Content-Type", contentTypeHeader)
-                .POST(HttpRequest.BodyPublishers.ofString(newMultipartData)).build();
-        response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        Assertions.assertEquals(409, response.statusCode());
-        Assertions.assertEquals("files [file1.txt, file2.txt] already exist. Use PUT to update them.", response.body());
-    }
-
-    @Test
-    public void testUploadMultipleFilesVariousParams() throws Exception {
-        var objectId = "testsuite:1";
-        var file1Contents = "... contents of file1.txt ...";
-        var file2Contents = "content";
-        var file2MD5Digest = "9a0364b9e99bb480dd25e1f0284c8555";
-        var file2Path = Path.of(workDir.toString(), "file2.txt");
-        Files.write(file2Path, file2Contents.getBytes(StandardCharsets.UTF_8));
-        var file2URI = "file://" + file2Path.toString();
-
-        var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20multiple%20files&username=someone&useraddress=someone%40school.edu");
-        var boundary = "AaB03x";
-        var contentTypeHeader = "multipart/form-data; boundary=" + boundary;
-        var paramsContentDisposition = "Content-Disposition: form-data; name=\"params\"";
-        var file1ContentDisposition = "Content-Disposition: form-data; name=\"files\"; filename=\"file1.txt\"";
-        var multipartData = "--" + boundary + "\r\n" +
-                paramsContentDisposition + "\r\n" +
-                "\r\n" +
-                "{\"file2.txt\": {\"location\": \"" + file2URI + "\"}}" + "\r\n" +
-                "--" + boundary + "\r\n" +
-                file1ContentDisposition + "\r\n" +
-                "\r\n" +
-                file1Contents + "\r\n" +
-                "--" + boundary + "--";
-
-        //initialize object
-        ocflHttp.writeFileToObject(objectId,
-                new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)),
-                "initial_file.txt", new VersionInfo(), false);
-
-        //POST files
-        var request = HttpRequest.newBuilder(uri)
-                .header("Content-Type", contentTypeHeader)
-                .POST(HttpRequest.BodyPublishers.ofString(multipartData)).build();
-        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        Assertions.assertEquals(201, response.statusCode());
-        var object = ocflHttp.repo.getObject(ObjectVersionId.head(objectId));
-        try (var stream = object.getFile("file1.txt").getStream()) {
-            Assertions.assertEquals(file1Contents, new String(stream.readAllBytes()));
-        }
-        try (var stream = object.getFile("file2.txt").getStream()) {
-            Assertions.assertEquals(file2Contents, new String(stream.readAllBytes()));
-        }
     }
 
     @Test
