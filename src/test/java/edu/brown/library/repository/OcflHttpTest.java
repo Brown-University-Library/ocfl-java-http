@@ -71,7 +71,7 @@ public class OcflHttpTest {
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
         var body = response.body();
-        Assertions.assertEquals("{\"OCFL ROOT\":\"" + tmpRoot + "\"}", body);
+        Assertions.assertEquals("{\"OCFL ROOT\":\"" + tmpRoot.toString() + "\"}", body);
 
         //test unhandled/not found url
         url = "http://localhost:8000/not-found";
@@ -281,7 +281,7 @@ public class OcflHttpTest {
                 "initial_file.txt", new VersionInfo(), false);
         var tmpFile = Files.createTempFile("ocfljavahttp", ".txt");
         Files.write(tmpFile, contents.getBytes(StandardCharsets.UTF_8));
-        var locationParam = "file://" + tmpFile.toString();
+        var locationParam = URLEncoder.encode(tmpFile.toUri().toString(), StandardCharsets.UTF_8);
 
         //POST a file by location
         var uri = URI.create("http://localhost:8000/" + objectId + "/files/test.txt?location=" + locationParam);

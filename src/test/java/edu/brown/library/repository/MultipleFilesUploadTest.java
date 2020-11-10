@@ -154,7 +154,6 @@ public class MultipleFilesUploadTest {
     public void testMultipleFilesPOST() throws Exception {
         var file1Contents = "... contents of file1.txt ...";
         var file2Contents = "content";
-        var file2MD5Digest = "9a0364b9e99bb480dd25e1f0284c8555";
         var file2Path = Path.of(workDir.toString(), "file2.txt");
         Files.write(file2Path, file2Contents.getBytes(StandardCharsets.UTF_8));
         var file2URI = file2Path.toUri();
