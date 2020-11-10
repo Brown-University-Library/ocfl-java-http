@@ -220,10 +220,29 @@ public class OcflHttp extends AbstractHandler {
         while(entries.hasNext()) {
             var entry = entries.next();
             var fileName = entry.getKey();
-            var fileInfo = entry.getValue();
-            var encodedFileURI = fileInfo.asJsonObject().getString("location");
-            var inputStream = Files.newInputStream(pathFromEncodedURI(encodedFileURI));
-            files.put(fileName, inputStream);
+            var fileInfo = entry.getValue().asJsonObject();
+            if(fileInfo != null) {
+                if(fileInfo.containsKey("location")) {
+                    var encodedFileURI = fileInfo.getString("location");
+                    if (encodedFileURI != null && !encodedFileURI.isEmpty()) {
+                        var inputStream = Files.newInputStream(pathFromEncodedURI(encodedFileURI));
+                        files.put(fileName, inputStream);
+                    }
+                }
+                if(fileInfo.containsKey("checksum")) {
+                    var checksum = fileInfo.getString("checksum");
+                    if (checksum != null && !checksum.isEmpty()) {
+                        var checksumType = "MD5";
+                        if(fileInfo.containsKey("checksumtype")) {
+                            checksumType = fileInfo.getString("checksumtype");
+                            if (checksumType == null || checksumType.isEmpty()) {
+                                checksumType = "MD5";
+                            }
+                        }
+                        files.put(fileName, new FixityCheckInputStream(files.get(fileName), checksumType, checksum));
+                    }
+                }
+            }
         }
         return files;
     }
@@ -256,6 +275,8 @@ public class OcflHttp extends AbstractHandler {
                 response.setStatus(HttpServletResponse.SC_CREATED);
             } catch (OverwriteException e) {
                 setResponseError(response, HttpServletResponse.SC_CONFLICT, "");
+            } catch (FixityCheckException e) {
+                setResponseError(response, HttpServletResponse.SC_CONFLICT, e.getMessage());
             }
         }
         finally {
@@ -289,8 +310,12 @@ public class OcflHttp extends AbstractHandler {
                     setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
                     return;
                 }
-                writeFilesToObject(objectId, files, versionInfo, true);
-                response.setStatus(HttpServletResponse.SC_CREATED);
+                try {
+                    writeFilesToObject(objectId, files, versionInfo, true);
+                    response.setStatus(HttpServletResponse.SC_CREATED);
+                } catch (FixityCheckException e) {
+                    setResponseError(response, HttpServletResponse.SC_CONFLICT, e.getMessage());
+                }
             } else {
                 var msg = objectId + " doesn't exist. Use POST to create it with these files.";
                 setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
@@ -468,11 +493,13 @@ public class OcflHttp extends AbstractHandler {
             if(method.equals("POST")) {
                 try {
                     handleObjectFilesPost(request, response, objectId);
-                } catch(Exception e) {System.out.println(e); throw e;}
+                } catch(Exception e) {System.out.println(e); e.printStackTrace(); throw e;}
             }
             else {
                 if(method.equals("PUT")) {
-                    handleObjectFilesPut(request, response, objectId);
+                    try {
+                        handleObjectFilesPut(request, response, objectId);
+                    } catch(Exception e) {System.out.println(e); e.printStackTrace(); throw e;}
                 }
             }
         }

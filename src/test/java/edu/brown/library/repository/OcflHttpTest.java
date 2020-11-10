@@ -71,7 +71,6 @@ public class OcflHttpTest {
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
         var body = response.body();
-        System.out.println(tmpRoot.toString());
         Assertions.assertEquals("{\"OCFL ROOT\":\"" + tmpRoot.toString().replace("\\", "\\\\") + "\"}", body);
 
         //test unhandled/not found url
