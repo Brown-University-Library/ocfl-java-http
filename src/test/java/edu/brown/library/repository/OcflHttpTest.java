@@ -227,7 +227,7 @@ public class OcflHttpTest {
     public void testUploadFile() throws Exception {
         objectId = "tĕst- suite_:1"; //override default objectId to test various characters
         var encodedObjectId = URLEncoder.encode(objectId, StandardCharsets.UTF_8.toString());
-        var file1Name = "some:-thing_ filĕ+.txt";
+        var file1Name = "some-thing_ filĕ+.txt";
         var encodedFile1Name = URLEncoder.encode(file1Name, StandardCharsets.UTF_8.toString());
         var uri = URI.create("http://localhost:8000/" + encodedObjectId + "/files/" + encodedFile1Name + "?message=adding%20" + encodedFile1Name + "&username=someone&useraddress=someone%40school.edu");
         var request = HttpRequest.newBuilder(uri)

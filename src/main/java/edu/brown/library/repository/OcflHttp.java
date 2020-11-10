@@ -235,26 +235,35 @@ public class OcflHttp extends AbstractHandler {
     {
         var versionInfo = getVersionInfo(request);
         var files = getFiles(request);
-        //if object exists, make sure none of the files exist already
-        if(repo.containsObject(objectId)) {
-            var object = repo.getObject(ObjectVersionId.head(objectId));
-            var existingFiles = new ArrayList<String>();
-            files.forEach((fileName, inputStream) -> {
-                if(object.containsFile(fileName)) {
-                    existingFiles.add(fileName);
+        try {
+            //if object exists, make sure none of the files exist already
+            if (repo.containsObject(objectId)) {
+                var object = repo.getObject(ObjectVersionId.head(objectId));
+                var existingFiles = new ArrayList<String>();
+                files.forEach((fileName, inputStream) -> {
+                    if (object.containsFile(fileName)) {
+                        existingFiles.add(fileName);
+                    }
+                });
+                if (!existingFiles.isEmpty()) {
+                    var msg = "files " + existingFiles + " already exist. Use PUT to update them.";
+                    setResponseError(response, HttpServletResponse.SC_CONFLICT, msg);
+                    return;
                 }
-            });
-            if (!existingFiles.isEmpty()) {
-                var msg = "files " + existingFiles + " already exist. Use PUT to update them.";
-                setResponseError(response, HttpServletResponse.SC_CONFLICT, msg);
-                return;
+            }
+            try {
+                writeFilesToObject(objectId, files, versionInfo, false);
+                response.setStatus(HttpServletResponse.SC_CREATED);
+            } catch (OverwriteException e) {
+                setResponseError(response, HttpServletResponse.SC_CONFLICT, "");
             }
         }
-        try {
-            writeFilesToObject(objectId, files, versionInfo, false);
-            response.setStatus(HttpServletResponse.SC_CREATED);
-        } catch(OverwriteException e) {
-            setResponseError(response, HttpServletResponse.SC_CONFLICT, "");
+        finally {
+            files.forEach((fileName, inputStream) -> {
+                try {
+                    inputStream.close();
+                } catch(Exception e) {System.out.println(e);}
+            });
         }
     }
 
@@ -265,26 +274,34 @@ public class OcflHttp extends AbstractHandler {
     {
         var versionInfo = getVersionInfo(request);
         var files = getFiles(request);
-        if(repo.containsObject(objectId)) {
-            var object = repo.getObject(ObjectVersionId.head(objectId));
-            //check that all files exist
-            var nonExistentFiles = new ArrayList<String>();
-            files.forEach((fileName, inputStream) -> {
-                if(!object.containsFile(fileName)) {
-                    nonExistentFiles.add(fileName);
+        try {
+            if (repo.containsObject(objectId)) {
+                var object = repo.getObject(ObjectVersionId.head(objectId));
+                //check that all files exist
+                var nonExistentFiles = new ArrayList<String>();
+                files.forEach((fileName, inputStream) -> {
+                    if (!object.containsFile(fileName)) {
+                        nonExistentFiles.add(fileName);
+                    }
+                });
+                if (!nonExistentFiles.isEmpty()) {
+                    var msg = "files " + nonExistentFiles + " don't exist. Use POST to create them.";
+                    setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
+                    return;
                 }
-            });
-            if(!nonExistentFiles.isEmpty()) {
-                var msg = "files " + nonExistentFiles + " don't exist. Use POST to create them.";
+                writeFilesToObject(objectId, files, versionInfo, true);
+                response.setStatus(HttpServletResponse.SC_CREATED);
+            } else {
+                var msg = objectId + " doesn't exist. Use POST to create it with these files.";
                 setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
-                return;
             }
-            writeFilesToObject(objectId, files, versionInfo, true);
-            response.setStatus(HttpServletResponse.SC_CREATED);
         }
-        else {
-            var msg = objectId + " doesn't exist. Use POST to create it with these files.";
-            setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
+        finally {
+            files.forEach((fileName, inputStream) -> {
+                try {
+                    inputStream.close();
+                } catch(Exception e) {System.out.println(e);}
+            });
         }
     }
 
