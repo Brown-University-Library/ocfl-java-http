@@ -3,6 +3,8 @@ package edu.brown.library.repository;
 import java.io.InputStream;
 import java.io.BufferedInputStream;
 import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -133,11 +135,16 @@ public class OcflHttp extends AbstractHandler {
         return versionInfo;
     }
 
-    InputStream getInputStream(HttpServletRequest request) throws IOException {
+    Path pathFromEncodedURI(String encodedURI) throws URISyntaxException {
+        var fileURI = new URI(URLDecoder.decode(encodedURI, StandardCharsets.UTF_8));
+        return Path.of(fileURI);
+    }
+
+    InputStream getInputStream(HttpServletRequest request) throws IOException, URISyntaxException {
         InputStream inputStream;
         var location = request.getParameter("location");
         if(location != null && !location.isEmpty()) {
-            inputStream = Files.newInputStream(Path.of(location.replace("file://", "")));
+            inputStream = Files.newInputStream(pathFromEncodedURI(location));
         }
         else {
             inputStream = request.getInputStream();
@@ -157,7 +164,7 @@ public class OcflHttp extends AbstractHandler {
                               HttpServletResponse response,
                               String objectId,
                               String path)
-            throws IOException
+            throws IOException, URISyntaxException
     {
         var versionInfo = getVersionInfo(request);
 
@@ -179,7 +186,7 @@ public class OcflHttp extends AbstractHandler {
                              String objectId,
                              OcflObjectVersion object,
                              String path)
-            throws IOException
+            throws IOException, URISyntaxException
     {
         if(object.containsFile(path)) {
             var versionInfo = getVersionInfo(request);
@@ -196,7 +203,7 @@ public class OcflHttp extends AbstractHandler {
         }
     }
 
-    HashMap<String, InputStream> getFiles(HttpServletRequest request) throws IOException, ServletException {
+    HashMap<String, InputStream> getFiles(HttpServletRequest request) throws IOException, ServletException, URISyntaxException {
         var files = new HashMap<String, InputStream>();
         JsonObject params = null;
         for(Part p: request.getParts()) {
@@ -214,8 +221,8 @@ public class OcflHttp extends AbstractHandler {
             var entry = entries.next();
             var fileName = entry.getKey();
             var fileInfo = entry.getValue();
-            var location = fileInfo.asJsonObject().getString("location");
-            var inputStream = Files.newInputStream(Path.of(location.replace("file://", "")));
+            var encodedFileURI = fileInfo.asJsonObject().getString("location");
+            var inputStream = Files.newInputStream(pathFromEncodedURI(encodedFileURI));
             files.put(fileName, inputStream);
         }
         return files;
@@ -224,7 +231,7 @@ public class OcflHttp extends AbstractHandler {
     void handleObjectFilesPost(HttpServletRequest request,
                                HttpServletResponse response,
                                String objectId)
-            throws IOException, ServletException
+            throws IOException, ServletException, URISyntaxException
     {
         var versionInfo = getVersionInfo(request);
         var files = getFiles(request);
@@ -254,7 +261,7 @@ public class OcflHttp extends AbstractHandler {
     void handleObjectFilesPut(HttpServletRequest request,
                                HttpServletResponse response,
                                String objectId)
-            throws IOException, ServletException
+            throws IOException, ServletException, URISyntaxException
     {
         var versionInfo = getVersionInfo(request);
         var files = getFiles(request);
@@ -398,7 +405,7 @@ public class OcflHttp extends AbstractHandler {
                           HttpServletResponse response,
                           String objectId,
                           String path)
-            throws IOException
+            throws IOException, URISyntaxException
     {
         var method = request.getMethod();
         if(method.equals("POST")) {
@@ -419,7 +426,7 @@ public class OcflHttp extends AbstractHandler {
     void handleObjectFiles(HttpServletRequest request,
                            HttpServletResponse response,
                            String objectId)
-        throws IOException, ServletException
+        throws IOException, ServletException, URISyntaxException
     {
         var method = request.getMethod();
         if(method.equals("GET")) {
@@ -469,30 +476,30 @@ public class OcflHttp extends AbstractHandler {
             handleRoot(response);
         }
         else {
-            var matcher = ObjectIdFilesPattern.matcher(updatedRequestURI);
-            if(matcher.matches()) {
-                var objectId = matcher.group(1);
-                handleObjectFiles(request, response, objectId);
-            }
-            else {
-                var matcher2 = ObjectIdPathContentPattern.matcher(updatedRequestURI);
-                if (matcher2.matches()) {
-                    var objectId = URLDecoder.decode(matcher2.group(1), StandardCharsets.UTF_8.toString());
-                    var path = URLDecoder.decode(matcher2.group(2), StandardCharsets.UTF_8.toString());
-                    handleObjectPathContent(request, response, objectId, path);
-                }
-                else {
-                    var matcher3 = ObjectIdPathPattern.matcher(updatedRequestURI);
-                    if (matcher3.matches()) {
-                        var objectId = URLDecoder.decode(matcher3.group(1), StandardCharsets.UTF_8.toString());
-                        var path = URLDecoder.decode(matcher3.group(2), StandardCharsets.UTF_8.toString());
-                        handleObjectPath(request, response, objectId, path);
+            try {
+                var matcher = ObjectIdFilesPattern.matcher(updatedRequestURI);
+                if (matcher.matches()) {
+                    var objectId = matcher.group(1);
+                    handleObjectFiles(request, response, objectId);
+                } else {
+                    var matcher2 = ObjectIdPathContentPattern.matcher(updatedRequestURI);
+                    if (matcher2.matches()) {
+                        var objectId = URLDecoder.decode(matcher2.group(1), StandardCharsets.UTF_8.toString());
+                        var path = URLDecoder.decode(matcher2.group(2), StandardCharsets.UTF_8.toString());
+                        handleObjectPathContent(request, response, objectId, path);
+                    } else {
+                        var matcher3 = ObjectIdPathPattern.matcher(updatedRequestURI);
+                        if (matcher3.matches()) {
+                            var objectId = URLDecoder.decode(matcher3.group(1), StandardCharsets.UTF_8.toString());
+                            var path = URLDecoder.decode(matcher3.group(2), StandardCharsets.UTF_8.toString());
+                            handleObjectPath(request, response, objectId, path);
+                        } else {
+                            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                        }
                     }
-                    else {
-                        response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-                    }
                 }
             }
+            catch(URISyntaxException e) {}
         }
         baseRequest.setHandled(true);
     }

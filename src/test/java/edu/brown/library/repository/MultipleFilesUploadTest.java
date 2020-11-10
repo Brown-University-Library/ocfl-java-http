@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -156,13 +157,14 @@ public class MultipleFilesUploadTest {
         var file2MD5Digest = "9a0364b9e99bb480dd25e1f0284c8555";
         var file2Path = Path.of(workDir.toString(), "file2.txt");
         Files.write(file2Path, file2Contents.getBytes(StandardCharsets.UTF_8));
-        var file2URI = "file://" + file2Path.toString();
+        var file2URI = file2Path.toUri();
+        var encodedFile2URI = URLEncoder.encode(file2URI.toString(), StandardCharsets.UTF_8);
 
         var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20multiple%20files&username=someone&useraddress=someone%40school.edu");
         var multipartData = "--" + boundary + "\r\n" +
                 paramsContentDisposition + "\r\n" +
                 "\r\n" +
-                "{\"file2.txt\": {\"location\": \"" + file2URI + "\"}}" + "\r\n" +
+                "{\"file2.txt\": {\"location\": \"" + encodedFile2URI + "\"}}" + "\r\n" +
                 "--" + boundary + "\r\n" +
                 file1ContentDisposition + "\r\n" +
                 "\r\n" +
