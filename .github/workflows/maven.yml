@@ -29,8 +29,8 @@ jobs:
     - name: 'Upload Artifact'
       uses: actions/upload-artifact@v2
       with:
-        name: $JAR_FILE_NAME
-        path: $JAR_FILE_NAME
+        name: ${{ env.JAR_FILE_NAME }}
+        path: ${{ env.JAR_FILE_NAME }}
 
   windows-tests:
       runs-on: windows-latest
