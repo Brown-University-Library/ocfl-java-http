@@ -13,6 +13,8 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
+    env:
+        JAR_FILE_NAME: ocfl-java-http-`date --utc +%Y%m%d%H%M`-${{ github.sha }}.jar
 
     steps:
     - uses: actions/checkout@v2
@@ -23,12 +25,12 @@ jobs:
     - name: Build with Maven
       run: mvn -B verify --file pom.xml
     - name: Copy and Rename jar
-      run: cp ${{ github.workspace }}/target/ocfl-java-http-0.1-SNAPSHOT-launcher.jar ocfl-java-http-${{ github.sha }}.jar
+      run: cp ${{ github.workspace }}/target/ocfl-java-http-0.1-SNAPSHOT-launcher.jar $JAR_FILE_NAME
     - name: 'Upload Artifact'
       uses: actions/upload-artifact@v2
       with:
-        name: ocfl-java-http-${{ github.sha }}.jar
-        path: ocfl-java-http-${{ github.sha }}.jar
+        name: $JAR_FILE_NAME
+        path: $JAR_FILE_NAME
 
   windows-tests:
       runs-on: windows-latest
