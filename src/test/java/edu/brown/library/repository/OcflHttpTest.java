@@ -71,7 +71,8 @@ public class OcflHttpTest {
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
         var body = response.body();
-        Assertions.assertEquals("{\"OCFL ROOT\":\"" + tmpRoot.toString() + "\"}", body);
+        System.out.println(tmpRoot.toString());
+        Assertions.assertEquals("{\"OCFL ROOT\":\"" + tmpRoot.toString().replace("\\", "\\\\") + "\"}", body);
 
         //test unhandled/not found url
         url = "http://localhost:8000/not-found";
@@ -232,6 +233,7 @@ public class OcflHttpTest {
         var request = HttpRequest.newBuilder(uri)
                 .POST(HttpRequest.BodyPublishers.ofString("content")).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals("", response.body());
         Assertions.assertEquals(201, response.statusCode());
         var object = ocflHttp.repo.getObject(ObjectVersionId.head(objectId));
         try (var stream = object.getFile(file1Name).getStream()) {
