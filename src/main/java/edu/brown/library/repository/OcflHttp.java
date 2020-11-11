@@ -252,24 +252,13 @@ public class OcflHttp extends AbstractHandler {
                                String objectId)
             throws IOException, ServletException, URISyntaxException
     {
+        if (repo.containsObject(objectId)) {
+            setResponseError(response, HttpServletResponse.SC_CONFLICT, "object " + objectId + " already exists. Use PUT to update it.");
+            return;
+        }
         var versionInfo = getVersionInfo(request);
         var files = getFiles(request);
         try {
-            //if object exists, make sure none of the files exist already
-            if (repo.containsObject(objectId)) {
-                var object = repo.getObject(ObjectVersionId.head(objectId));
-                var existingFiles = new ArrayList<String>();
-                files.forEach((fileName, inputStream) -> {
-                    if (object.containsFile(fileName)) {
-                        existingFiles.add(fileName);
-                    }
-                });
-                if (!existingFiles.isEmpty()) {
-                    var msg = "files " + existingFiles + " already exist. Use PUT to update them.";
-                    setResponseError(response, HttpServletResponse.SC_CONFLICT, msg);
-                    return;
-                }
-            }
             try {
                 writeFilesToObject(objectId, files, versionInfo, false);
                 response.setStatus(HttpServletResponse.SC_CREATED);
@@ -299,16 +288,19 @@ public class OcflHttp extends AbstractHandler {
             if (repo.containsObject(objectId)) {
                 var object = repo.getObject(ObjectVersionId.head(objectId));
                 //check that all files exist
-                var nonExistentFiles = new ArrayList<String>();
+                var existingFiles = new ArrayList<String>();
                 files.forEach((fileName, inputStream) -> {
-                    if (!object.containsFile(fileName)) {
-                        nonExistentFiles.add(fileName);
+                    if (object.containsFile(fileName)) {
+                        existingFiles.add(fileName);
                     }
                 });
-                if (!nonExistentFiles.isEmpty()) {
-                    var msg = "files " + nonExistentFiles + " don't exist. Use POST to create them.";
-                    setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
-                    return;
+                if (!existingFiles.isEmpty()) {
+                    var updateExisting = request.getParameter("updateExisting");
+                    if(updateExisting == null || !updateExisting.equals("yes")) {
+                        var msg = "files " + existingFiles + " already exist. Add updateExisting=yes parameter to the URL to update them.";
+                        setResponseError(response, HttpServletResponse.SC_CONFLICT, msg);
+                        return;
+                    }
                 }
                 try {
                     writeFilesToObject(objectId, files, versionInfo, true);
@@ -317,7 +309,7 @@ public class OcflHttp extends AbstractHandler {
                     setResponseError(response, HttpServletResponse.SC_CONFLICT, e.getMessage());
                 }
             } else {
-                var msg = objectId + " doesn't exist. Use POST to create it with these files.";
+                var msg = objectId + " doesn't exist. Use POST to create it.";
                 setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
             }
         }

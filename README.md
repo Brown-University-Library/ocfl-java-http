@@ -14,11 +14,12 @@ API
 - POST /<object_id>/files
     - url params: message, username, useraddress - these get added to OCFL version info
     - body: multipart/form-data files to be added to the object
-    - fails if any of the files already exist
+    - fails if the object already exists
 - PUT /<object_id>/files
     - url params: message, username, useraddress - these get added to OCFL version info
     - body: multipart/form-data files to be updated in the object
-    - fails if any of the files don't exist
+    - fails if the object doesn't exist or the files already exist
+    - adding the updateExisting=yes URL parameter allows updating existing files
 - POST /<object_id>/files/<file_name>
     - url params: message, username, useraddress - these get added to OCFL version info
         - checksum, checksumtype - verify that the received data matches what user sent
