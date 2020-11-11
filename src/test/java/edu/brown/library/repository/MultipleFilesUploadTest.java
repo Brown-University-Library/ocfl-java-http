@@ -60,7 +60,7 @@ public class MultipleFilesUploadTest {
         ocflHttp.writeFileToObject(objectId,
                 new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)),
                 "initial_file.txt", new VersionInfo(), false);
-        var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20multiple%20files&username=someone&useraddress=someone%40school.edu");
+        var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20multiple%20files&userName=someone&userAddress=someone%40school.edu");
         var file1Contents = "... contents of file1.txt ...";
         var file2Contents = "...contents of file2.txt...";
         var multipartData = "--" + boundary + "\r\n" +
@@ -191,7 +191,7 @@ public class MultipleFilesUploadTest {
 
     @Test
     public void testUploadMultipleFilesPostAndPut() throws Exception {
-        var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20multiple%20files&username=someone&useraddress=someone%40school.edu");
+        var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20multiple%20files&userName=someone&userAddress=someone%40school.edu");
         var file1Contents = "... contents of file1.txt ...";
         var file2Contents = "...contents of file2.txt...";
         var multipartData = "--" + boundary + "\r\n" +
@@ -227,7 +227,7 @@ public class MultipleFilesUploadTest {
         Assertions.assertEquals("someone@school.edu", user.getAddress());
 
         //now put the files
-        uri = URI.create("http://localhost:8000/" + objectId + "/files?updateExisting=yes&message=updating%20multiple%20files&username=someoneelse&useraddress=someoneelse%40school.edu");
+        uri = URI.create("http://localhost:8000/" + objectId + "/files?updateExisting=yes&message=updating%20multiple%20files&userName=someoneelse&userAddress=someoneelse%40school.edu");
         var newMultipartData = "--" + boundary + "\r\n" +
                 paramsContentDisposition + "\r\n" +
                 "\r\n" +
@@ -269,11 +269,11 @@ public class MultipleFilesUploadTest {
         var file2URI = file2Path.toUri();
         var encodedFile2URI = URLEncoder.encode(file2URI.toString(), StandardCharsets.UTF_8);
 
-        var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20multiple%20files&username=someone&useraddress=someone%40school.edu");
+        var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20multiple%20files&userName=someone&userAddress=someone%40school.edu");
         var multipartData = "--" + boundary + "\r\n" +
                 paramsContentDisposition + "\r\n" +
                 "\r\n" +
-                "{\"file1.txt\": {\"checksum\": \"" + file1Sha512 + "\", \"checksumtype\": \"SHA-512\"}, \"file2.txt\": {\"location\": \"" + encodedFile2URI + "\"}}" + "\r\n" +
+                "{\"file1.txt\": {\"checksum\": \"" + file1Sha512 + "\", \"checksumType\": \"SHA-512\"}, \"file2.txt\": {\"location\": \"" + encodedFile2URI + "\"}}" + "\r\n" +
                 "--" + boundary + "\r\n" +
                 file1ContentDisposition + "\r\n" +
                 "\r\n" +
@@ -295,7 +295,7 @@ public class MultipleFilesUploadTest {
         }
 
         //now PUT files
-        uri = URI.create("http://localhost:8000/" + objectId + "/files?updateExisting=yes&message=adding%20multiple%20files&username=someone&useraddress=someone%40school.edu");
+        uri = URI.create("http://localhost:8000/" + objectId + "/files?updateExisting=yes&message=adding%20multiple%20files&userName=someone&userAddress=someone%40school.edu");
         var newFile2Contents = "new file2 contents updated";
         var newFile1Contents = "new file1 contents updated";
         Files.write(file2Path, newFile2Contents.getBytes(StandardCharsets.UTF_8));
@@ -359,7 +359,7 @@ class FilePoster implements Runnable {
 
     public void run() {
         var objectId = "testsuite:1";
-        var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20file1&username=someone&useraddress=someone%40school.edu");
+        var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20file1");
         var contents = "abcdefghij".repeat(4000);
         var multipartData = "--AaB03x\r\n" +
                 "Content-Disposition: form-data; name=\"params\"\r\n" +
