@@ -9,6 +9,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -17,6 +18,8 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
 
 public class MultipleFilesUploadTest {
 
@@ -51,7 +54,38 @@ public class MultipleFilesUploadTest {
     }
 
     @Test
-    public void testMissingObjectAndFiles() throws Exception {
+    public void testPostToExistingObject() throws Exception {
+        //POST to an existing object must fail, so we don't accidentally overwrite an existing object when
+        // we're trying to ingest a new one.
+        ocflHttp.writeFileToObject(objectId,
+                new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)),
+                "initial_file.txt", new VersionInfo(), false);
+        var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20multiple%20files&username=someone&useraddress=someone%40school.edu");
+        var file1Contents = "... contents of file1.txt ...";
+        var file2Contents = "...contents of file2.txt...";
+        var multipartData = "--" + boundary + "\r\n" +
+                paramsContentDisposition + "\r\n" +
+                "\r\n" +
+                "{}" + "\r\n" +
+                "--" + boundary + "\r\n" +
+                file1ContentDisposition + "\r\n" +
+                "\r\n" +
+                file1Contents + "\r\n" +
+                "--" + boundary + "\r\n" +
+                file2ContentDisposition + "\r\n" +
+                "\r\n" +
+                file2Contents + "\r\n" +
+                "--" + boundary + "--";
+        var request = HttpRequest.newBuilder(uri)
+                .header("Content-Type", contentTypeHeader)
+                .POST(HttpRequest.BodyPublishers.ofString(multipartData)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals("object testsuite:1 already exists. Use PUT to update it.", response.body());
+        Assertions.assertEquals(409, response.statusCode());
+    }
+
+    @Test
+    public void testPutToMissingObject() throws Exception {
         var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20multiple%20files&username=someone&useraddress=someone%40school.edu");
         var file1Contents = "... contents of file1.txt ...";
         var file2Contents = "...contents of file2.txt...";
@@ -75,24 +109,11 @@ public class MultipleFilesUploadTest {
                 .PUT(HttpRequest.BodyPublishers.ofString(multipartData)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(404, response.statusCode());
-        Assertions.assertEquals("testsuite:1 doesn't exist. Use POST to create it with these files.", response.body());
-
-        //initialize object
-        ocflHttp.writeFileToObject(objectId,
-                new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)),
-                "initial_file.txt", new VersionInfo(), false);
-
-        //try putting files again - should fail now because those files don't exist
-        request = HttpRequest.newBuilder(uri)
-                .header("Content-Type", contentTypeHeader)
-                .PUT(HttpRequest.BodyPublishers.ofString(multipartData)).build();
-        response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        Assertions.assertEquals(404, response.statusCode());
-        Assertions.assertEquals("files [file1.txt, file2.txt] don't exist. Use POST to create them.", response.body());
+        Assertions.assertEquals("testsuite:1 doesn't exist. Use POST to create it.", response.body());
     }
 
     @Test
-    public void testFileAlreadyExists() throws Exception {
+    public void testPutFileAlreadyExists() throws Exception {
         var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20multiple%20files&username=someone&useraddress=someone%40school.edu");
         var file1Contents = "... contents of file1.txt ...";
         var file2Contents = "...contents of file2.txt...";
@@ -118,10 +139,10 @@ public class MultipleFilesUploadTest {
         //posting the files should fail because file1.txt already exists
         var request = HttpRequest.newBuilder(uri)
                 .header("Content-Type", contentTypeHeader)
-                .POST(HttpRequest.BodyPublishers.ofString(multipartData)).build();
+                .PUT(HttpRequest.BodyPublishers.ofString(multipartData)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals("files [file1.txt] already exist. Add updateExisting=yes parameter to the URL to update them.", response.body());
         Assertions.assertEquals(409, response.statusCode());
-        Assertions.assertEquals("files [file1.txt] already exist. Use PUT to update them.", response.body());
         var object = ocflHttp.repo.getObject(ObjectVersionId.head(objectId));
         var files = object.getFiles();
         Assertions.assertEquals(1, files.size());
@@ -159,10 +180,12 @@ public class MultipleFilesUploadTest {
         ocflHttp.writeFileToObject(objectId,
                 new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)),
                 "file2.txt", new VersionInfo(), false);
+        uri = URI.create("http://localhost:8000/" + objectId + "/files?updateExisting=yes&message=adding%20multiple%20files&username=someone&useraddress=someone%40school.edu");
         request = HttpRequest.newBuilder(uri)
                 .header("Content-Type", contentTypeHeader)
                 .PUT(HttpRequest.BodyPublishers.ofString(multipartData)).build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals("Expected MD5 digest: a; Actual: 7a22164bf25f145183087da4784e81f8", response.body());
         Assertions.assertEquals(409, response.statusCode());
     }
 
@@ -185,12 +208,7 @@ public class MultipleFilesUploadTest {
                 file2Contents + "\r\n" +
                 "--" + boundary + "--";
 
-        //initialize object
-        ocflHttp.writeFileToObject(objectId,
-                new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)),
-                "initial_file.txt", new VersionInfo(), false);
-
-        //post the files - success
+        //post the files - creates the object
         var request = HttpRequest.newBuilder(uri)
                 .header("Content-Type", contentTypeHeader)
                 .POST(HttpRequest.BodyPublishers.ofString(multipartData)).build();
@@ -208,8 +226,8 @@ public class MultipleFilesUploadTest {
         Assertions.assertEquals("someone", user.getName());
         Assertions.assertEquals("someone@school.edu", user.getAddress());
 
-        //now put the files - should succeed
-        uri = URI.create("http://localhost:8000/" + objectId + "/files?message=updating%20multiple%20files&username=someoneelse&useraddress=someoneelse%40school.edu");
+        //now put the files
+        uri = URI.create("http://localhost:8000/" + objectId + "/files?updateExisting=yes&message=updating%20multiple%20files&username=someoneelse&useraddress=someoneelse%40school.edu");
         var newMultipartData = "--" + boundary + "\r\n" +
                 paramsContentDisposition + "\r\n" +
                 "\r\n" +
@@ -262,12 +280,7 @@ public class MultipleFilesUploadTest {
                 file1Contents + "\r\n" +
                 "--" + boundary + "--";
 
-        //initialize object
-        ocflHttp.writeFileToObject(objectId,
-                new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)),
-                "initial_file.txt", new VersionInfo(), false);
-
-        //POST files
+        //POST files - creates the object
         var request = HttpRequest.newBuilder(uri)
                 .header("Content-Type", contentTypeHeader)
                 .POST(HttpRequest.BodyPublishers.ofString(multipartData)).build();
@@ -282,6 +295,7 @@ public class MultipleFilesUploadTest {
         }
 
         //now PUT files
+        uri = URI.create("http://localhost:8000/" + objectId + "/files?updateExisting=yes&message=adding%20multiple%20files&username=someone&useraddress=someone%40school.edu");
         var newFile2Contents = "new file2 contents updated";
         var newFile1Contents = "new file1 contents updated";
         Files.write(file2Path, newFile2Contents.getBytes(StandardCharsets.UTF_8));
@@ -305,6 +319,85 @@ public class MultipleFilesUploadTest {
         }
         try (var stream = object.getFile("file2.txt").getStream()) {
             Assertions.assertEquals(newFile2Contents, new String(stream.readAllBytes()));
+        }
+    }
+
+    @Test
+    public void testConcurrentWrites() throws Exception {
+        //https://jodah.net/testing-multi-threaded-code
+        var doneSignal = new CountDownLatch(2);
+        var posters = List.of(
+                new FilePoster(doneSignal),
+                new FilePoster(doneSignal)
+        );
+
+        for (var poster: posters) {
+            new Thread(poster).start();
+        }
+        doneSignal.await();
+
+        var failCount = 0;
+        for (var poster: posters) {
+            if (!poster.failure.equals("")) {
+                failCount++;
+                Assertions.assertEquals("ObjectOutOfSyncException", poster.failure);
+            }
+        }
+        Assertions.assertEquals(1, failCount);
+    }
+}
+
+class FilePoster implements Runnable {
+
+    private final CountDownLatch doneSignal;
+    String failure;
+
+    FilePoster(CountDownLatch doneSignal) {
+        this.doneSignal = doneSignal;
+        this.failure = "";
+    }
+
+    public void run() {
+        var objectId = "testsuite:1";
+        var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20file1&username=someone&useraddress=someone%40school.edu");
+        var contents = "abcdefghij".repeat(4000);
+        var multipartData = "--AaB03x\r\n" +
+                "Content-Disposition: form-data; name=\"params\"\r\n" +
+                "\r\n" +
+                "{}" + "\r\n" +
+                "--AaB03x\r\n" +
+                "Content-Disposition: form-data; name=\"files\"; filename=\"file1.txt\"\r\n" +
+                "\r\n" +
+                contents + "\r\n" +
+                "--AaB03x--";
+        var request = HttpRequest.newBuilder(uri)
+                .header("Content-Type", "multipart/form-data; boundary=AaB03x")
+                .POST(HttpRequest.BodyPublishers.ofString(multipartData)).build();
+        var client = HttpClient.newHttpClient();
+        try {
+            var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            var statusCode = response.statusCode();
+            var body = response.body();
+            try {
+                Assertions.assertEquals(201, statusCode);
+            }
+            catch(AssertionError e) {
+                if(body.contains("ObjectOutOfSyncException")) {
+                    failure = "ObjectOutOfSyncException";
+                }
+                else {
+                    failure = "unexpected response: " + statusCode + " - " + body;
+                }
+            }
+        }
+        catch(IOException e) {
+            failure = e.toString();
+        }
+        catch(InterruptedException e) {
+            failure = e.toString();
+        }
+        finally {
+            doneSignal.countDown();
         }
     }
 }
