@@ -3,7 +3,8 @@ package edu.brown.library.repository;
 import java.io.InputStream;
 import java.io.BufferedInputStream;
 import java.io.IOException;
-import java.io.UncheckedIOException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -13,11 +14,11 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.regex.Pattern;
 import javax.json.Json;
 import javax.json.JsonObject;
+import javax.json.JsonReader;
 import javax.servlet.MultipartConfigElement;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
@@ -83,21 +84,16 @@ public class OcflHttp extends AbstractHandler {
                 });
     }
 
-    void writeFilesToObject(String objectId, Collection<Part> parts, VersionInfo versionInfo, boolean overwrite)
+    void writeFilesToObject(String objectId, HashMap<String, InputStream> files, VersionInfo versionInfo, boolean overwrite)
     {
         repo.updateObject(ObjectVersionId.head(objectId), versionInfo, updater -> {
-            try {
-                for (Part p : parts) {
-                    var fileName = p.getSubmittedFileName();
+                files.forEach((fileName, inputStream) -> {
                     if(overwrite) {
-                        updater.writeFile(p.getInputStream(), fileName, OVERWRITE);
+                        updater.writeFile(inputStream, fileName, OVERWRITE);
                     } else {
-                        updater.writeFile(p.getInputStream(), fileName);
+                        updater.writeFile(inputStream, fileName);
                     }
-                }
-            } catch(IOException e) {
-                throw new UncheckedIOException(e);
-            }
+                });
         });
     }
 
@@ -139,11 +135,16 @@ public class OcflHttp extends AbstractHandler {
         return versionInfo;
     }
 
-    InputStream getInputStream(HttpServletRequest request) throws IOException {
+    Path pathFromEncodedURI(String encodedURI) throws URISyntaxException {
+        var fileURI = new URI(URLDecoder.decode(encodedURI, StandardCharsets.UTF_8));
+        return Path.of(fileURI);
+    }
+
+    InputStream getInputStream(HttpServletRequest request) throws IOException, URISyntaxException {
         InputStream inputStream;
         var location = request.getParameter("location");
         if(location != null && !location.isEmpty()) {
-            inputStream = Files.newInputStream(Path.of(location.replace("file://", "")));
+            inputStream = Files.newInputStream(pathFromEncodedURI(location));
         }
         else {
             inputStream = request.getInputStream();
@@ -163,7 +164,7 @@ public class OcflHttp extends AbstractHandler {
                               HttpServletResponse response,
                               String objectId,
                               String path)
-            throws IOException
+            throws IOException, URISyntaxException
     {
         var versionInfo = getVersionInfo(request);
 
@@ -185,7 +186,7 @@ public class OcflHttp extends AbstractHandler {
                              String objectId,
                              OcflObjectVersion object,
                              String path)
-            throws IOException
+            throws IOException, URISyntaxException
     {
         if(object.containsFile(path)) {
             var versionInfo = getVersionInfo(request);
@@ -202,63 +203,130 @@ public class OcflHttp extends AbstractHandler {
         }
     }
 
+    HashMap<String, InputStream> getFiles(HttpServletRequest request) throws IOException, ServletException, URISyntaxException {
+        var files = new HashMap<String, InputStream>();
+        JsonObject params = null;
+        for(Part p: request.getParts()) {
+            if(p.getName().equals("params")) {
+                JsonReader reader = Json.createReader(p.getInputStream());
+                params = reader.readObject();
+            }
+            else {
+                var fileName = p.getSubmittedFileName();
+                files.put(fileName, p.getInputStream());
+            }
+        }
+        var entries = params.entrySet().iterator();
+        while(entries.hasNext()) {
+            var entry = entries.next();
+            var fileName = entry.getKey();
+            var fileInfo = entry.getValue().asJsonObject();
+            if(fileInfo != null) {
+                if(fileInfo.containsKey("location")) {
+                    var encodedFileURI = fileInfo.getString("location");
+                    if (encodedFileURI != null && !encodedFileURI.isEmpty()) {
+                        var inputStream = Files.newInputStream(pathFromEncodedURI(encodedFileURI));
+                        files.put(fileName, inputStream);
+                    }
+                }
+                if(fileInfo.containsKey("checksum")) {
+                    var checksum = fileInfo.getString("checksum");
+                    if (checksum != null && !checksum.isEmpty()) {
+                        var checksumType = "MD5";
+                        if(fileInfo.containsKey("checksumtype")) {
+                            checksumType = fileInfo.getString("checksumtype");
+                            if (checksumType == null || checksumType.isEmpty()) {
+                                checksumType = "MD5";
+                            }
+                        }
+                        files.put(fileName, new FixityCheckInputStream(files.get(fileName), checksumType, checksum));
+                    }
+                }
+            }
+        }
+        return files;
+    }
+
     void handleObjectFilesPost(HttpServletRequest request,
                                HttpServletResponse response,
                                String objectId)
-            throws IOException, ServletException
+            throws IOException, ServletException, URISyntaxException
     {
         var versionInfo = getVersionInfo(request);
-        //if object exists, make sure none of the files exist already
-        if(repo.containsObject(objectId)) {
-            var object = repo.getObject(ObjectVersionId.head(objectId));
-            var existingFiles = new ArrayList<String>();
-            for (Part p : request.getParts()) {
-                var fileName = p.getSubmittedFileName();
-                if (object.containsFile(fileName)) {
-                    existingFiles.add(fileName);
+        var files = getFiles(request);
+        try {
+            //if object exists, make sure none of the files exist already
+            if (repo.containsObject(objectId)) {
+                var object = repo.getObject(ObjectVersionId.head(objectId));
+                var existingFiles = new ArrayList<String>();
+                files.forEach((fileName, inputStream) -> {
+                    if (object.containsFile(fileName)) {
+                        existingFiles.add(fileName);
+                    }
+                });
+                if (!existingFiles.isEmpty()) {
+                    var msg = "files " + existingFiles + " already exist. Use PUT to update them.";
+                    setResponseError(response, HttpServletResponse.SC_CONFLICT, msg);
+                    return;
                 }
             }
-            if (!existingFiles.isEmpty()) {
-                var msg = "files " + existingFiles + " already exist. Use PUT to update them.";
-                setResponseError(response, HttpServletResponse.SC_CONFLICT, msg);
-                return;
+            try {
+                writeFilesToObject(objectId, files, versionInfo, false);
+                response.setStatus(HttpServletResponse.SC_CREATED);
+            } catch (OverwriteException e) {
+                setResponseError(response, HttpServletResponse.SC_CONFLICT, "");
+            } catch (FixityCheckException e) {
+                setResponseError(response, HttpServletResponse.SC_CONFLICT, e.getMessage());
             }
         }
-        try {
-            writeFilesToObject(objectId, request.getParts(), versionInfo, false);
-            response.setStatus(HttpServletResponse.SC_CREATED);
-        } catch(OverwriteException e) {
-            setResponseError(response, HttpServletResponse.SC_CONFLICT, "");
+        finally {
+            files.forEach((fileName, inputStream) -> {
+                try {
+                    inputStream.close();
+                } catch(Exception e) {System.out.println(e);}
+            });
         }
     }
 
     void handleObjectFilesPut(HttpServletRequest request,
                                HttpServletResponse response,
                                String objectId)
-            throws IOException, ServletException
+            throws IOException, ServletException, URISyntaxException
     {
         var versionInfo = getVersionInfo(request);
-        if(repo.containsObject(objectId)) {
-            var object = repo.getObject(ObjectVersionId.head(objectId));
-            //check that all files exist
-            var nonExistentFiles = new ArrayList<String>();
-            for (Part p : request.getParts()) {
-                var fileName = p.getSubmittedFileName();
-                if (!object.containsFile(fileName)) {
-                    nonExistentFiles.add(fileName);
+        var files = getFiles(request);
+        try {
+            if (repo.containsObject(objectId)) {
+                var object = repo.getObject(ObjectVersionId.head(objectId));
+                //check that all files exist
+                var nonExistentFiles = new ArrayList<String>();
+                files.forEach((fileName, inputStream) -> {
+                    if (!object.containsFile(fileName)) {
+                        nonExistentFiles.add(fileName);
+                    }
+                });
+                if (!nonExistentFiles.isEmpty()) {
+                    var msg = "files " + nonExistentFiles + " don't exist. Use POST to create them.";
+                    setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
+                    return;
                 }
-            }
-            if(!nonExistentFiles.isEmpty()) {
-                var msg = "files " + nonExistentFiles + " don't exist. Use POST to create them.";
+                try {
+                    writeFilesToObject(objectId, files, versionInfo, true);
+                    response.setStatus(HttpServletResponse.SC_CREATED);
+                } catch (FixityCheckException e) {
+                    setResponseError(response, HttpServletResponse.SC_CONFLICT, e.getMessage());
+                }
+            } else {
+                var msg = objectId + " doesn't exist. Use POST to create it with these files.";
                 setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
-                return;
             }
-            writeFilesToObject(objectId, request.getParts(), versionInfo, true);
-            response.setStatus(HttpServletResponse.SC_CREATED);
         }
-        else {
-            var msg = objectId + " doesn't exist. Use POST to create it with these files.";
-            setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
+        finally {
+            files.forEach((fileName, inputStream) -> {
+                try {
+                    inputStream.close();
+                } catch(Exception e) {System.out.println(e);}
+            });
         }
     }
 
@@ -379,7 +447,7 @@ public class OcflHttp extends AbstractHandler {
                           HttpServletResponse response,
                           String objectId,
                           String path)
-            throws IOException
+            throws IOException, URISyntaxException
     {
         var method = request.getMethod();
         if(method.equals("POST")) {
@@ -400,7 +468,7 @@ public class OcflHttp extends AbstractHandler {
     void handleObjectFiles(HttpServletRequest request,
                            HttpServletResponse response,
                            String objectId)
-        throws IOException, ServletException
+        throws IOException, ServletException, URISyntaxException
     {
         var method = request.getMethod();
         if(method.equals("GET")) {
@@ -423,11 +491,15 @@ public class OcflHttp extends AbstractHandler {
         }
         else {
             if(method.equals("POST")) {
-                handleObjectFilesPost(request, response, objectId);
+                try {
+                    handleObjectFilesPost(request, response, objectId);
+                } catch(Exception e) {System.out.println(e); e.printStackTrace(); throw e;}
             }
             else {
                 if(method.equals("PUT")) {
-                    handleObjectFilesPut(request, response, objectId);
+                    try {
+                        handleObjectFilesPut(request, response, objectId);
+                    } catch(Exception e) {System.out.println(e); e.printStackTrace(); throw e;}
                 }
             }
         }
@@ -448,30 +520,30 @@ public class OcflHttp extends AbstractHandler {
             handleRoot(response);
         }
         else {
-            var matcher = ObjectIdFilesPattern.matcher(updatedRequestURI);
-            if(matcher.matches()) {
-                var objectId = matcher.group(1);
-                handleObjectFiles(request, response, objectId);
-            }
-            else {
-                var matcher2 = ObjectIdPathContentPattern.matcher(updatedRequestURI);
-                if (matcher2.matches()) {
-                    var objectId = URLDecoder.decode(matcher2.group(1), StandardCharsets.UTF_8.toString());
-                    var path = URLDecoder.decode(matcher2.group(2), StandardCharsets.UTF_8.toString());
-                    handleObjectPathContent(request, response, objectId, path);
-                }
-                else {
-                    var matcher3 = ObjectIdPathPattern.matcher(updatedRequestURI);
-                    if (matcher3.matches()) {
-                        var objectId = URLDecoder.decode(matcher3.group(1), StandardCharsets.UTF_8.toString());
-                        var path = URLDecoder.decode(matcher3.group(2), StandardCharsets.UTF_8.toString());
-                        handleObjectPath(request, response, objectId, path);
+            try {
+                var matcher = ObjectIdFilesPattern.matcher(updatedRequestURI);
+                if (matcher.matches()) {
+                    var objectId = matcher.group(1);
+                    handleObjectFiles(request, response, objectId);
+                } else {
+                    var matcher2 = ObjectIdPathContentPattern.matcher(updatedRequestURI);
+                    if (matcher2.matches()) {
+                        var objectId = URLDecoder.decode(matcher2.group(1), StandardCharsets.UTF_8.toString());
+                        var path = URLDecoder.decode(matcher2.group(2), StandardCharsets.UTF_8.toString());
+                        handleObjectPathContent(request, response, objectId, path);
+                    } else {
+                        var matcher3 = ObjectIdPathPattern.matcher(updatedRequestURI);
+                        if (matcher3.matches()) {
+                            var objectId = URLDecoder.decode(matcher3.group(1), StandardCharsets.UTF_8.toString());
+                            var path = URLDecoder.decode(matcher3.group(2), StandardCharsets.UTF_8.toString());
+                            handleObjectPath(request, response, objectId, path);
+                        } else {
+                            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                        }
                     }
-                    else {
-                        response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-                    }
                 }
             }
+            catch(URISyntaxException e) {}
         }
         baseRequest.setHandled(true);
     }
