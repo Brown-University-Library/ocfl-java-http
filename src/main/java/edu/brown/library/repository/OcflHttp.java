@@ -122,10 +122,10 @@ public class OcflHttp extends AbstractHandler {
         if(messageParam != null && messageParam.length > 0) {
             versionInfo.setMessage(messageParam[0]);
         }
-        var userNameParam = params.get("username");
+        var userNameParam = params.get("userName");
         if(userNameParam != null && userNameParam.length > 0) {
             var userName = userNameParam[0];
-            var userAddressParam = params.get("useraddress");
+            var userAddressParam = params.get("userAddress");
             var userAddress = "";
             if(userAddressParam != null && userAddressParam.length > 0) {
                 userAddress = userAddressParam[0];
@@ -170,8 +170,8 @@ public class OcflHttp extends AbstractHandler {
                     var checksum = fileInfo.getString("checksum");
                     if (checksum != null && !checksum.isEmpty()) {
                         var checksumType = "MD5";
-                        if(fileInfo.containsKey("checksumtype")) {
-                            checksumType = fileInfo.getString("checksumtype");
+                        if(fileInfo.containsKey("checksumType")) {
+                            checksumType = fileInfo.getString("checksumType");
                             if (checksumType == null || checksumType.isEmpty()) {
                                 checksumType = "MD5";
                             }
