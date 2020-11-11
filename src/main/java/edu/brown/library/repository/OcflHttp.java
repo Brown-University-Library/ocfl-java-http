@@ -140,69 +140,6 @@ public class OcflHttp extends AbstractHandler {
         return Path.of(fileURI);
     }
 
-    InputStream getInputStream(HttpServletRequest request) throws IOException, URISyntaxException {
-        InputStream inputStream;
-        var location = request.getParameter("location");
-        if(location != null && !location.isEmpty()) {
-            inputStream = Files.newInputStream(pathFromEncodedURI(location));
-        }
-        else {
-            inputStream = request.getInputStream();
-        }
-        var checksumParam = request.getParameter("checksum");
-        if(checksumParam != null && !checksumParam.isEmpty()) {
-            var checksumType = request.getParameter("checksumtype");
-            if(checksumType == null || checksumType.isEmpty()) {
-                checksumType = "MD5";
-            }
-            inputStream = new FixityCheckInputStream(inputStream, checksumType, checksumParam);
-        }
-        return inputStream;
-    }
-
-    void handleObjectPathPost(HttpServletRequest request,
-                              HttpServletResponse response,
-                              String objectId,
-                              String path)
-            throws IOException, URISyntaxException
-    {
-        var versionInfo = getVersionInfo(request);
-
-        try(var inputStream = getInputStream(request)) {
-            writeFileToObject(objectId, inputStream, path, versionInfo, false);
-            response.setStatus(HttpServletResponse.SC_CREATED);
-        }
-        catch(OverwriteException e) {
-            var msg = objectId + "/" + path + " already exists. Use PUT to update it.";
-            setResponseError(response, HttpServletResponse.SC_CONFLICT, msg);
-        }
-        catch(FixityCheckException e) {
-            setResponseError(response, HttpServletResponse.SC_CONFLICT, e.getMessage());
-        }
-    }
-
-    void handleObjectPathPut(HttpServletRequest request,
-                             HttpServletResponse response,
-                             String objectId,
-                             OcflObjectVersion object,
-                             String path)
-            throws IOException, URISyntaxException
-    {
-        if(object.containsFile(path)) {
-            var versionInfo = getVersionInfo(request);
-            try(var inputStream = getInputStream(request)) {
-                writeFileToObject(objectId, inputStream, path, versionInfo, true);
-                response.setStatus(HttpServletResponse.SC_CREATED);
-            } catch (FixityCheckException e) {
-                setResponseError(response, HttpServletResponse.SC_CONFLICT, e.getMessage());
-            }
-        }
-        else {
-            var msg = objectId + "/" + path + " doesn't exist. Use POST to create it.";
-            setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
-        }
-    }
-
     HashMap<String, InputStream> getFiles(HttpServletRequest request) throws IOException, ServletException, URISyntaxException {
         var files = new HashMap<String, InputStream>();
         JsonObject params = null;
@@ -435,28 +372,6 @@ public class OcflHttp extends AbstractHandler {
         }
     }
 
-    void handleObjectPath(HttpServletRequest request,
-                          HttpServletResponse response,
-                          String objectId,
-                          String path)
-            throws IOException, URISyntaxException
-    {
-        var method = request.getMethod();
-        if(method.equals("POST")) {
-            handleObjectPathPost(request, response, objectId, path);
-        }
-        else {
-            try {
-                var object = repo.getObject(ObjectVersionId.head(objectId));
-                if(method.equals("PUT")) {
-                    handleObjectPathPut(request, response, objectId, object, path);
-                }
-            } catch(NotFoundException e) {
-                setResponseError(response, HttpServletResponse.SC_NOT_FOUND, objectId + " not found");
-            }
-        }
-    }
-
     void handleObjectFiles(HttpServletRequest request,
                            HttpServletResponse response,
                            String objectId)
@@ -524,14 +439,7 @@ public class OcflHttp extends AbstractHandler {
                         var path = URLDecoder.decode(matcher2.group(2), StandardCharsets.UTF_8.toString());
                         handleObjectPathContent(request, response, objectId, path);
                     } else {
-                        var matcher3 = ObjectIdPathPattern.matcher(updatedRequestURI);
-                        if (matcher3.matches()) {
-                            var objectId = URLDecoder.decode(matcher3.group(1), StandardCharsets.UTF_8.toString());
-                            var path = URLDecoder.decode(matcher3.group(2), StandardCharsets.UTF_8.toString());
-                            handleObjectPath(request, response, objectId, path);
-                        } else {
-                            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-                        }
+                        response.setStatus(HttpServletResponse.SC_NOT_FOUND);
                     }
                 }
             }
