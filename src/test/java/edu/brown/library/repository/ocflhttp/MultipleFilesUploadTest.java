@@ -190,6 +190,34 @@ public class MultipleFilesUploadTest {
     }
 
     @Test
+    public void testInvalidLocation() throws Exception {
+        var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20multiple%20files&userName=someone&userAddress=someone%40school.edu");
+        var multipartData = "--" + boundary + "\r\n" +
+                paramsContentDisposition + "\r\n" +
+                "\r\n" +
+                "{\"file1.txt\": {\"location\": \"invalid_uri\"}}" + "\r\n" +
+                "--" + boundary + "--";
+        var request = HttpRequest.newBuilder(uri)
+                .header("Content-Type", contentTypeHeader)
+                .POST(HttpRequest.BodyPublishers.ofString(multipartData)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(400, response.statusCode());
+        Assertions.assertEquals("invalid location: invalid_uri", response.body());
+
+        multipartData = "--" + boundary + "\r\n" +
+                paramsContentDisposition + "\r\n" +
+                "\r\n" +
+                "{\"file1.txt\": {\"location\": \"file:/invalid_uri\"}}" + "\r\n" +
+                "--" + boundary + "--";
+        request = HttpRequest.newBuilder(uri)
+                .header("Content-Type", contentTypeHeader)
+                .POST(HttpRequest.BodyPublishers.ofString(multipartData)).build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(400, response.statusCode());
+        Assertions.assertEquals("invalid location - no such file: file:/invalid_uri", response.body());
+    }
+
+    @Test
     public void testUploadMultipleFilesPostAndPut() throws Exception {
         var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20multiple%20files&userName=someone&userAddress=someone%40school.edu");
         var file1Contents = "... contents of file1.txt ...";
