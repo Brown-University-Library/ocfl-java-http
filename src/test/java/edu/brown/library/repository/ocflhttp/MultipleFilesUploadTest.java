@@ -360,7 +360,7 @@ class FilePoster implements Runnable {
     public void run() {
         var objectId = "testsuite:1";
         var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20file1");
-        var contents = "abcdefghij".repeat(4000);
+        var contents = "abcdefghij".repeat(40000);
         var multipartData = "--AaB03x\r\n" +
                 "Content-Disposition: form-data; name=\"params\"\r\n" +
                 "\r\n" +
