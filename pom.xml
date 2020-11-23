@@ -92,7 +92,7 @@
                 <configuration>
                     <transformers>
                         <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                            <mainClass>edu.brown.library.repository.OcflHttp</mainClass>
+                            <mainClass>edu.brown.library.repository.ocflhttp.OcflHttp</mainClass>
                         </transformer>
                     </transformers>
                     <shadedArtifactAttached>true</shadedArtifactAttached>
