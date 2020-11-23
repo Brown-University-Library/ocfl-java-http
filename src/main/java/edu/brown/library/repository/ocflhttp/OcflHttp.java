@@ -16,6 +16,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.regex.Pattern;
+import java.util.logging.Logger;
 import javax.json.Json;
 import javax.json.JsonObject;
 import javax.json.JsonReader;
@@ -57,6 +58,7 @@ public class OcflHttp extends AbstractHandler {
     public static String IfModifiedSinceHeader = "If-Modified-Since";
     public static DateTimeFormatter IfModifiedFormatter = DateTimeFormatter.ofPattern("E, dd LLL uuuu kk:mm:ss O");
     private static final MultipartConfigElement MULTI_PART_CONFIG = new MultipartConfigElement(System.getProperty("java.io.tmpdir"));
+    private static Logger logger = Logger.getLogger("edu.brown.library.repository.ocflhttp");
 
     private Path repoRoot;
     OcflRepository repo;
@@ -443,7 +445,10 @@ public class OcflHttp extends AbstractHandler {
                     }
                 }
             }
-            catch(URISyntaxException e) {}
+            catch(URISyntaxException e) {
+                logger.warning(e.getMessage());
+                setResponseError(response, HttpServletResponse.SC_BAD_REQUEST, "invalid URI in request");
+            }
         }
         baseRequest.setHandled(true);
     }
