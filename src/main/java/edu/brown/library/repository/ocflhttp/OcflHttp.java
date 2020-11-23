@@ -1,4 +1,4 @@
-package edu.brown.library.repository;
+package edu.brown.library.repository.ocflhttp;
 
 import java.io.InputStream;
 import java.io.BufferedInputStream;

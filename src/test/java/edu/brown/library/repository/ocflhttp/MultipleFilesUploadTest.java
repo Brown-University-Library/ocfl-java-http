@@ -1,4 +1,4 @@
-package edu.brown.library.repository;
+package edu.brown.library.repository.ocflhttp;
 
 import edu.wisc.library.ocfl.api.model.ObjectVersionId;
 import edu.wisc.library.ocfl.api.model.VersionInfo;
