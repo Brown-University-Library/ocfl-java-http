@@ -85,17 +85,6 @@ public class OcflHttp extends AbstractHandler {
                 .build();
     }
 
-    void writeFileToObject(String objectId, InputStream content, String path, VersionInfo versionInfo, boolean overwrite)
-    {
-        repo.updateObject(ObjectVersionId.head(objectId), versionInfo, updater -> {
-                    if(overwrite) {
-                        updater.writeFile(content, path, OVERWRITE);
-                    } else {
-                        updater.writeFile(content, path);
-                    }
-                });
-    }
-
     void writeFilesToObject(ObjectVersionId objectVersionId, HashMap<String, InputStream> files, VersionInfo versionInfo, boolean overwrite)
     {
         repo.updateObject(objectVersionId, versionInfo, updater -> {

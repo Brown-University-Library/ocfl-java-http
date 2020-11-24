@@ -57,9 +57,9 @@ public class MultipleFilesUploadTest {
     public void testPostToExistingObject() throws Exception {
         //POST to an existing object must fail, so we don't accidentally overwrite an existing object when
         // we're trying to ingest a new one.
-        ocflHttp.writeFileToObject(objectId,
-                new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)),
-                "initial_file.txt", new VersionInfo(), false);
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+                updater.writeFile(new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)),"initial_file.txt");
+        });
         var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20multiple%20files&userName=someone&userAddress=someone%40school.edu");
         var file1Contents = "... contents of first file ...";
         var file2Contents = "...contents of file2.txt...";
@@ -132,9 +132,9 @@ public class MultipleFilesUploadTest {
                 "--" + boundary + "--";
 
         //initialize object
-        ocflHttp.writeFileToObject(objectId,
-                new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)),
-                file1Name, new VersionInfo(), false);
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+                    updater.writeFile(new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)), file1Name);
+                });
 
         //PUT should fail because file1.txt already exists
         var request = HttpRequest.newBuilder(uri)
@@ -174,12 +174,12 @@ public class MultipleFilesUploadTest {
         Assertions.assertEquals(409, response.statusCode());
 
         //test PUT
-        ocflHttp.writeFileToObject(objectId,
-                new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)),
-                file1Name, new VersionInfo(), false);
-        ocflHttp.writeFileToObject(objectId,
-                new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)),
-                "file2.txt", new VersionInfo(), false);
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+                    updater.writeFile(new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)), file1Name);
+                });
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+                    updater.writeFile(new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)), "file2.txt");
+                });
         uri = URI.create("http://localhost:8000/" + objectId + "/files?updateExisting=yes&message=adding%20multiple%20files&username=someone&useraddress=someone%40school.edu");
         request = HttpRequest.newBuilder(uri)
                 .header("Content-Type", contentTypeHeader)

@@ -95,9 +95,9 @@ public class OcflHttpTest {
 
     @Test
     public void testGetFiles() throws Exception {
-        ocflHttp.writeFileToObject(objectId,
-                new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)),
-                "file1", new VersionInfo(), false);
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+                updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)),"file1");
+        });
         var url = "http://localhost:8000/" + encodedObjectId + "/files";
         var request = HttpRequest.newBuilder(URI.create(url)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
@@ -145,9 +145,9 @@ public class OcflHttpTest {
         Assertions.assertEquals(objectId + " not found", response.body());
         //now test object exists, but missing file
         var fileContents = "data";
-        ocflHttp.writeFileToObject(objectId,
-                new ByteArrayInputStream(fileContents.getBytes(StandardCharsets.UTF_8)),
-                fileName, new VersionInfo(), false);
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+                    updater.writeFile(new ByteArrayInputStream(fileContents.getBytes(StandardCharsets.UTF_8)), fileName);
+                });
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(404, response.statusCode());
         Assertions.assertEquals(objectId + "/file1 not found", response.body());
@@ -206,9 +206,9 @@ public class OcflHttpTest {
 
         //test with a larger file
         var contents = "abcdefghij".repeat(4000);
-        ocflHttp.writeFileToObject(objectId,
-                new ByteArrayInputStream(contents.getBytes(StandardCharsets.UTF_8)),
-                "biggerfile", new VersionInfo(), false);
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+                updater.writeFile(new ByteArrayInputStream(contents.getBytes(StandardCharsets.UTF_8)),"biggerfile");
+                });
         uri = URI.create("http://localhost:8000/" + objectId + "/files/biggerfile/content");
         request = HttpRequest.newBuilder(uri).GET().build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
