@@ -8,6 +8,7 @@ API
 - GET /
     - returns {"OCFL ROOT": ...} as JSON
 - GET /<object_id>/files
+    - add includeDeleted=1 URL param to request all files, not just currently active ones
     - returns {"files": {"file1": {}}} as JSON
 - GET /<object_id>/files/<file_name>/content returns file contents
     - use "Range" header to request partial file contents
