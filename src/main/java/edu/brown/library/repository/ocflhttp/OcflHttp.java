@@ -154,7 +154,7 @@ public class OcflHttp extends AbstractHandler {
             try {
                 inputStream.close();
             } catch (Exception e) {
-                System.out.println(e);
+                logger.severe(e.getMessage());
             }
         });
     }
@@ -173,43 +173,47 @@ public class OcflHttp extends AbstractHandler {
             }
         }
         var entries = params.entrySet().iterator();
-        while(entries.hasNext()) {
-            var entry = entries.next();
-            var fileName = entry.getKey();
-            var fileInfo = entry.getValue().asJsonObject();
-            if(fileInfo != null) {
-                if(fileInfo.containsKey("location")) {
-                    var encodedFileURI = fileInfo.getString("location");
-                    if (encodedFileURI != null && !encodedFileURI.isEmpty()) {
-                        try {
-                            var path = pathFromEncodedURI(encodedFileURI);
-                            var inputStream = Files.newInputStream(path);
-                            files.put(fileName, inputStream);
-                        }
-                        catch(URISyntaxException | IllegalArgumentException e) {
-                            logger.warning(e.getMessage());
-                            throw new InvalidLocationException("invalid location: " + encodedFileURI);
-                        }
-                        catch(NoSuchFileException e) {
-                            logger.warning(e.getMessage());
-                            throw new InvalidLocationException("invalid location - no such file: " + encodedFileURI);
-                        }
-                    }
-                }
-                if(fileInfo.containsKey("checksum")) {
-                    var checksum = fileInfo.getString("checksum");
-                    if (checksum != null && !checksum.isEmpty()) {
-                        var checksumType = "MD5";
-                        if(fileInfo.containsKey("checksumType")) {
-                            checksumType = fileInfo.getString("checksumType");
-                            if (checksumType == null || checksumType.isEmpty()) {
-                                checksumType = "MD5";
+        try {
+            while (entries.hasNext()) {
+                var entry = entries.next();
+                var fileName = entry.getKey();
+                var fileInfo = entry.getValue().asJsonObject();
+                if (fileInfo != null) {
+                    if (fileInfo.containsKey("location")) {
+                        var encodedFileURI = fileInfo.getString("location");
+                        if (encodedFileURI != null && !encodedFileURI.isEmpty()) {
+                            try {
+                                var path = pathFromEncodedURI(encodedFileURI);
+                                var inputStream = Files.newInputStream(path);
+                                files.put(fileName, inputStream);
+                            } catch (URISyntaxException | IllegalArgumentException e) {
+                                logger.warning(e.getMessage());
+                                throw new InvalidLocationException("invalid location: " + encodedFileURI);
+                            } catch (NoSuchFileException e) {
+                                logger.warning(e.getMessage());
+                                throw new InvalidLocationException("invalid location - no such file: " + encodedFileURI);
                             }
                         }
-                        files.put(fileName, new FixityCheckInputStream(files.get(fileName), checksumType, checksum));
+                    }
+                    if (fileInfo.containsKey("checksum")) {
+                        var checksum = fileInfo.getString("checksum");
+                        if (checksum != null && !checksum.isEmpty()) {
+                            var checksumType = "MD5";
+                            if (fileInfo.containsKey("checksumType")) {
+                                checksumType = fileInfo.getString("checksumType");
+                                if (checksumType == null || checksumType.isEmpty()) {
+                                    checksumType = "MD5";
+                                }
+                            }
+                            files.put(fileName, new FixityCheckInputStream(files.get(fileName), checksumType, checksum));
+                        }
                     }
                 }
             }
+        }
+        catch (Exception e) {
+            closeFilesInputStreams(files);
+            throw e;
         }
         return files;
     }
