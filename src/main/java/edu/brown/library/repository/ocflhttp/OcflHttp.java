@@ -17,6 +17,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.regex.Pattern;
 import java.util.logging.Logger;
 import javax.json.Json;
@@ -31,16 +32,17 @@ import javax.servlet.http.Part;
 import edu.wisc.library.ocfl.api.exception.FixityCheckException;
 import edu.wisc.library.ocfl.api.exception.ObjectOutOfSyncException;
 import edu.wisc.library.ocfl.api.io.FixityCheckInputStream;
+import edu.wisc.library.ocfl.api.model.FileDetails;
+import edu.wisc.library.ocfl.api.model.ObjectVersionId;
 import edu.wisc.library.ocfl.api.model.OcflObjectVersion;
+import edu.wisc.library.ocfl.api.model.VersionDetails;
+import edu.wisc.library.ocfl.api.model.VersionInfo;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.AbstractHandler;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import edu.wisc.library.ocfl.api.exception.NotFoundException;
 import edu.wisc.library.ocfl.api.OcflRepository;
-import edu.wisc.library.ocfl.api.model.FileDetails;
-import edu.wisc.library.ocfl.api.model.VersionInfo;
-import edu.wisc.library.ocfl.api.model.ObjectVersionId;
 import edu.wisc.library.ocfl.core.OcflRepositoryBuilder;
 import edu.wisc.library.ocfl.core.extension.storage.layout.config.HashedTruncatedNTupleIdConfig;
 import edu.wisc.library.ocfl.core.storage.filesystem.FileSystemOcflStorage;
@@ -63,6 +65,7 @@ public class OcflHttp extends AbstractHandler {
     final long ChunkSize = 1000L;
     public static String IfNoneMatchHeader = "If-None-Match";
     public static String IfModifiedSinceHeader = "If-Modified-Since";
+    public static String IncludeDeletedParameter = "includeDeleted";
     public static DateTimeFormatter IfModifiedFormatter = DateTimeFormatter.ofPattern("E, dd LLL uuuu kk:mm:ss O");
     private static final MultipartConfigElement MULTI_PART_CONFIG = new MultipartConfigElement(System.getProperty("java.io.tmpdir"));
     private static Logger logger = Logger.getLogger("edu.brown.library.repository.ocflhttp");
@@ -413,12 +416,27 @@ public class OcflHttp extends AbstractHandler {
         var method = request.getMethod();
         if(method.equals("GET")) {
             if (repo.containsObject(objectId)) {
-                var version = repo.describeVersion(ObjectVersionId.head(objectId));
-                var files = version.getFiles();
+                var filesSet = new HashSet<String>();
+                var includeDeletedParam = request.getParameter(IncludeDeletedParameter);
+                if(includeDeletedParam != null && includeDeletedParam.equals("1")) {
+                    var versionDetails = repo.describeObject(objectId).getVersionMap().values();
+                    for(VersionDetails v: versionDetails) {
+                        for(FileDetails f: v.getFiles()) {
+                            filesSet.add(f.getPath());
+                        }
+                    }
+                }
+                else {
+                    var version = repo.describeVersion(ObjectVersionId.head(objectId));
+                    var files = version.getFiles();
+                    for (FileDetails f : files) {
+                        filesSet.add(f.getPath());
+                    }
+                }
                 var emptyOutput = Json.createObjectBuilder();
                 var filesOutput = Json.createObjectBuilder();
-                for (FileDetails f : files) {
-                    filesOutput.add(f.getPath(), emptyOutput);
+                for(String path: filesSet) {
+                    filesOutput.add(path, emptyOutput);
                 }
                 var output = Json.createObjectBuilder().add("files", filesOutput).build();
                 response.setStatus(HttpServletResponse.SC_OK);

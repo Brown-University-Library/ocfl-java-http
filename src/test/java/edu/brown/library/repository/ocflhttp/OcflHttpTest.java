@@ -10,6 +10,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.OffsetDateTime;
+
+import edu.wisc.library.ocfl.api.model.ObjectVersionId;
 import edu.wisc.library.ocfl.api.model.VersionInfo;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
@@ -17,6 +19,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
+
+import javax.json.Json;
+import javax.json.JsonObject;
 
 
 public class OcflHttpTest {
@@ -79,24 +84,55 @@ public class OcflHttpTest {
     }
 
     @Test
-    public void testObjectFiles() throws Exception {
-        ocflHttp.writeFileToObject("testsuite:1",
+    public void testGetFilesObjectNotFound() throws Exception {
+        //now test object that doesn't exist
+        var url = "http://localhost:8000/testsuite:notfound/files";
+        var request = HttpRequest.newBuilder(URI.create(url)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(404, response.statusCode());
+        Assertions.assertEquals("testsuite:notfound not found", response.body());
+    }
+
+    @Test
+    public void testGetFiles() throws Exception {
+        ocflHttp.writeFileToObject(objectId,
                 new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)),
                 "file1", new VersionInfo(), false);
-        var url = "http://localhost:8000/testsuite:1/files";
+        var url = "http://localhost:8000/" + encodedObjectId + "/files";
         var request = HttpRequest.newBuilder(URI.create(url)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
         Assertions.assertEquals("bytes", response.headers().firstValue("Accept-Ranges").get());
-        var body = response.body();
-        Assertions.assertEquals("{\"files\":{\"file1\":{}}}", body);
+        Assertions.assertEquals("{\"files\":{\"file1\":{}}}", response.body());
+    }
 
-        //now test object that doesn't exist
-        url = "http://localhost:8000/testsuite:notfound/files";
+    @Test
+    public void testGetFilesAll() throws Exception {
+        //add file1
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)), "file1");
+        });
+        //now delete file1 & add file2
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.removeFile("file1");
+            updater.writeFile(new ByteArrayInputStream("file2 data".getBytes(StandardCharsets.UTF_8)), "file2");
+        });
+        //url w/ no param should just return active/not-deleted files
+        var url = "http://localhost:8000/" + encodedObjectId + "/files";
+        var request = HttpRequest.newBuilder(URI.create(url)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(200, response.statusCode());
+        Assertions.assertEquals("{\"files\":{\"file2\":{}}}", response.body());
+
+        //now include deleted files
+        url = "http://localhost:8000/" + encodedObjectId + "/files?" + OcflHttp.IncludeDeletedParameter + "=1";
         request = HttpRequest.newBuilder(URI.create(url)).build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        Assertions.assertEquals(404, response.statusCode());
-        Assertions.assertEquals("testsuite:notfound not found", response.body());
+        Assertions.assertEquals(200, response.statusCode());
+        JsonObject responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
+        var filesJson = responseJson.getJsonObject("files");
+        Assertions.assertTrue(filesJson.containsKey("file1"));
+        Assertions.assertTrue(filesJson.containsKey("file2"));
     }
 
     @Test
