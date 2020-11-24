@@ -1,6 +1,7 @@
 package edu.brown.library.repository.ocflhttp;
 
 import java.io.ByteArrayInputStream;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.URI;
@@ -25,7 +26,10 @@ public class OcflHttpTest {
     Path tmpRoot;
     Path workDir;
     HttpClient client;
-    String objectId = "testsuite:1";
+    String objectId = "testsuite:nâtiôn";
+    String encodedObjectId = URLEncoder.encode(objectId, StandardCharsets.UTF_8);
+    String fileName = "nâtiôn.txt";
+    String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8);
 
     @BeforeEach
     private void setup() throws Exception {
@@ -102,24 +106,24 @@ public class OcflHttpTest {
         var request = HttpRequest.newBuilder(uri).GET().build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(404, response.statusCode());
-        Assertions.assertEquals("testsuite:1 not found", response.body());
+        Assertions.assertEquals(objectId + " not found", response.body());
         //now test object exists, but missing file
         var fileContents = "data";
         ocflHttp.writeFileToObject(objectId,
                 new ByteArrayInputStream(fileContents.getBytes(StandardCharsets.UTF_8)),
-                "afile", new VersionInfo(), false);
+                fileName, new VersionInfo(), false);
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(404, response.statusCode());
-        Assertions.assertEquals("testsuite:1/file1 not found", response.body());
+        Assertions.assertEquals(objectId + "/file1 not found", response.body());
         //now test success
-        uri = URI.create("http://localhost:8000/" + objectId + "/files/afile/content");
+        uri = URI.create("http://localhost:8000/" + encodedObjectId + "/files/" + encodedFileName + "/content");
         request = HttpRequest.newBuilder(uri).GET().build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
         Assertions.assertEquals("bytes", response.headers().firstValue("Accept-Ranges").get());
         Assertions.assertEquals("4", response.headers().firstValue("Content-Length").get());
         Assertions.assertEquals("text/plain", response.headers().firstValue("Content-Type").get());
-        Assertions.assertEquals("attachment; filename=\"afile\"", response.headers().firstValue("Content-Disposition").get());
+        Assertions.assertEquals("attachment; filename*=UTF-8''" + encodedFileName, response.headers().firstValue("Content-Disposition").get());
         var lastModifiedHeader = response.headers().firstValue("Last-Modified").get();
         Assertions.assertTrue(lastModifiedHeader.endsWith(" GMT"));
         var fileETag = "\"77c7ce9a5d86bb386d443bb96390faa120633158699c8844c30b13ab0bf92760b7e4416aea397db91b4ac0e5dd56b8ef7e4b066162ab1fdc088319ce6defc876\"";

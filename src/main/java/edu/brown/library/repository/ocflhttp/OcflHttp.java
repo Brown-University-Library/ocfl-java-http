@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLDecoder;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -59,7 +60,6 @@ public class OcflHttp extends AbstractHandler {
     final String fileNameRegex = "[-:_. %a-zA-Z0-9]+";
     final Pattern ObjectIdFilesPattern = Pattern.compile("^/(" + objectIdRegex + ")/files$");
     final Pattern ObjectIdPathContentPattern = Pattern.compile("^/(" + objectIdRegex + ")/files/(" + fileNameRegex + ")/content$");
-    final Pattern ObjectIdPathPattern = Pattern.compile("^/(" + objectIdRegex + ")/files/(" + fileNameRegex + ")$");
     final long ChunkSize = 1000L;
     public static String IfNoneMatchHeader = "If-None-Match";
     public static String IfModifiedSinceHeader = "If-Modified-Since";
@@ -353,7 +353,7 @@ public class OcflHttp extends AbstractHandler {
                     var lastModifiedHeader = fileLastModifiedUTC.format(OcflHttp.IfModifiedFormatter);
                     response.addHeader("Last-Modified", lastModifiedHeader);
                     response.addHeader("ETag", "\"" + digestValue + "\"");
-                    response.addHeader("Content-Disposition", "attachment; filename=\"" + path + "\"");
+                    response.addHeader("Content-Disposition", "attachment; filename*=UTF-8''" + URLEncoder.encode(path, StandardCharsets.UTF_8));
                 }
                 try (var stream = file.getStream().enableFixityCheck(false)) {
                     try (var outputStream = response.getOutputStream()) {
@@ -462,7 +462,7 @@ public class OcflHttp extends AbstractHandler {
         else {
             var matcher = ObjectIdFilesPattern.matcher(updatedRequestURI);
             if (matcher.matches()) {
-                var objectId = matcher.group(1);
+                var objectId = URLDecoder.decode(matcher.group(1), StandardCharsets.UTF_8.toString());
                 handleObjectFiles(request, response, objectId);
             } else {
                 var matcher2 = ObjectIdPathContentPattern.matcher(updatedRequestURI);
