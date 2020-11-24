@@ -433,13 +433,13 @@ public class OcflHttp extends AbstractHandler {
             if(method.equals("POST")) {
                 try {
                     handleObjectFilesPost(request, response, objectId);
-                } catch(Exception e) {System.out.println(e); e.printStackTrace(); throw e;}
+                } catch(Exception e) {logger.severe(e.getMessage()); throw e;}
             }
             else {
                 if(method.equals("PUT")) {
                     try {
                         handleObjectFilesPut(request, response, objectId);
-                    } catch(Exception e) {System.out.println(e); e.printStackTrace(); throw e;}
+                    } catch(Exception e) {logger.severe(e.getMessage()); throw e;}
                 }
             }
         }
