@@ -28,6 +28,7 @@ import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.Part;
 
 import edu.wisc.library.ocfl.api.exception.FixityCheckException;
+import edu.wisc.library.ocfl.api.exception.ObjectOutOfSyncException;
 import edu.wisc.library.ocfl.api.io.FixityCheckInputStream;
 import edu.wisc.library.ocfl.api.model.OcflObjectVersion;
 import org.eclipse.jetty.server.Server;
@@ -93,9 +94,9 @@ public class OcflHttp extends AbstractHandler {
                 });
     }
 
-    void writeFilesToObject(String objectId, HashMap<String, InputStream> files, VersionInfo versionInfo, boolean overwrite)
+    void writeFilesToObject(ObjectVersionId objectVersionId, HashMap<String, InputStream> files, VersionInfo versionInfo, boolean overwrite)
     {
-        repo.updateObject(ObjectVersionId.head(objectId), versionInfo, updater -> {
+        repo.updateObject(objectVersionId, versionInfo, updater -> {
                 files.forEach((fileName, inputStream) -> {
                     if(overwrite) {
                         updater.writeFile(inputStream, fileName, OVERWRITE);
@@ -223,19 +224,16 @@ public class OcflHttp extends AbstractHandler {
                                String objectId)
             throws IOException, ServletException
     {
-        if (repo.containsObject(objectId)) {
-            setResponseError(response, HttpServletResponse.SC_CONFLICT, "object " + objectId + " already exists. Use PUT to update it.");
-            return;
-        }
         var versionInfo = getVersionInfo(request);
         try {
             var files = getFiles(request);
             try {
                 try {
-                    writeFilesToObject(objectId, files, versionInfo, false);
+                    //version 0 is the way to tell ocfl-java you want to write version 1 of a new object
+                    writeFilesToObject(ObjectVersionId.version(objectId, 0), files, versionInfo, false);
                     response.setStatus(HttpServletResponse.SC_CREATED);
-                } catch (OverwriteException e) {
-                    setResponseError(response, HttpServletResponse.SC_CONFLICT, "");
+                } catch (ObjectOutOfSyncException e) {
+                    setResponseError(response, HttpServletResponse.SC_CONFLICT, "object " + objectId + " already exists. Use PUT to update it.");
                 } catch (FixityCheckException e) {
                     setResponseError(response, HttpServletResponse.SC_CONFLICT, e.getMessage());
                 }
@@ -276,7 +274,7 @@ public class OcflHttp extends AbstractHandler {
                         }
                     }
                     try {
-                        writeFilesToObject(objectId, files, versionInfo, true);
+                        writeFilesToObject(ObjectVersionId.head(objectId), files, versionInfo, true);
                         response.setStatus(HttpServletResponse.SC_CREATED);
                     } catch (FixityCheckException e) {
                         setResponseError(response, HttpServletResponse.SC_CONFLICT, e.getMessage());

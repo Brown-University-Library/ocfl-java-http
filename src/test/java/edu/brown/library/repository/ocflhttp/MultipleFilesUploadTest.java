@@ -113,7 +113,7 @@ public class MultipleFilesUploadTest {
     }
 
     @Test
-    public void testPutFileAlreadyExists() throws Exception {
+    public void testFileAlreadyExists() throws Exception {
         var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20multiple%20files&username=someone&useraddress=someone%40school.edu");
         var file1Contents = "... contents of file1.txt ...";
         var file2Contents = "...contents of file2.txt...";
@@ -136,7 +136,7 @@ public class MultipleFilesUploadTest {
                 new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)),
                 "file1.txt", new VersionInfo(), false);
 
-        //posting the files should fail because file1.txt already exists
+        //PUT should fail because file1.txt already exists
         var request = HttpRequest.newBuilder(uri)
                 .header("Content-Type", contentTypeHeader)
                 .PUT(HttpRequest.BodyPublishers.ofString(multipartData)).build();
