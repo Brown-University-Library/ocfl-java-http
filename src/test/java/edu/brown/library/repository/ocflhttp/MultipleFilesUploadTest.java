@@ -9,7 +9,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -18,8 +17,6 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
-import java.util.concurrent.CountDownLatch;
 
 public class MultipleFilesUploadTest {
 
@@ -354,85 +351,6 @@ public class MultipleFilesUploadTest {
         }
         try (var stream = object.getFile("file2.txt").getStream()) {
             Assertions.assertEquals(newFile2Contents, new String(stream.readAllBytes()));
-        }
-    }
-
-    @Test
-    public void testConcurrentWrites() throws Exception {
-        //https://jodah.net/testing-multi-threaded-code
-        var doneSignal = new CountDownLatch(2);
-        var posters = List.of(
-                new FilePoster(doneSignal),
-                new FilePoster(doneSignal)
-        );
-
-        for (var poster: posters) {
-            new Thread(poster).start();
-        }
-        doneSignal.await();
-
-        var failCount = 0;
-        for (var poster: posters) {
-            if (!poster.failure.equals("")) {
-                failCount++;
-                Assertions.assertEquals("ObjectOutOfSyncException", poster.failure);
-            }
-        }
-        Assertions.assertEquals(1, failCount);
-    }
-}
-
-class FilePoster implements Runnable {
-
-    private final CountDownLatch doneSignal;
-    String failure;
-
-    FilePoster(CountDownLatch doneSignal) {
-        this.doneSignal = doneSignal;
-        this.failure = "";
-    }
-
-    public void run() {
-        var objectId = "testsuite:1";
-        var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20file1");
-        var contents = "abcdefghij".repeat(40000);
-        var multipartData = "--AaB03x\r\n" +
-                "Content-Disposition: form-data; name=\"params\"\r\n" +
-                "\r\n" +
-                "{}" + "\r\n" +
-                "--AaB03x\r\n" +
-                "Content-Disposition: form-data; name=\"files\"; filename=\"file1.txt\"\r\n" +
-                "\r\n" +
-                contents + "\r\n" +
-                "--AaB03x--";
-        var request = HttpRequest.newBuilder(uri)
-                .header("Content-Type", "multipart/form-data; boundary=AaB03x")
-                .POST(HttpRequest.BodyPublishers.ofString(multipartData)).build();
-        var client = HttpClient.newHttpClient();
-        try {
-            var response = client.send(request, HttpResponse.BodyHandlers.ofString());
-            var statusCode = response.statusCode();
-            var body = response.body();
-            try {
-                Assertions.assertEquals(201, statusCode);
-            }
-            catch(AssertionError e) {
-                if(body.contains("ObjectOutOfSyncException")) {
-                    failure = "ObjectOutOfSyncException";
-                }
-                else {
-                    failure = "unexpected response: " + statusCode + " - " + body;
-                }
-            }
-        }
-        catch(IOException e) {
-            failure = e.toString();
-        }
-        catch(InterruptedException e) {
-            failure = e.toString();
-        }
-        finally {
-            doneSignal.countDown();
         }
     }
 }
