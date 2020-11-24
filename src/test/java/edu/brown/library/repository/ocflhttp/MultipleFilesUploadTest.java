@@ -191,11 +191,18 @@ public class MultipleFilesUploadTest {
 
     @Test
     public void testInvalidLocation() throws Exception {
+        var file1Path = Path.of(workDir.toString(), "file1.txt");
+        Files.write(file1Path, "file1Contents".getBytes(StandardCharsets.UTF_8));
+        var file1URI = file1Path.toUri();
+        var encodedFile1URI = URLEncoder.encode(file1URI.toString(), StandardCharsets.UTF_8);
+        var params = "{\"file1.txt\": {\"location\": \"" + encodedFile1URI + "\"}, "
+                + "\"file2.txt\": {\"location\": \"invalid_uri\"}}";
+
         var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20multiple%20files&userName=someone&userAddress=someone%40school.edu");
         var multipartData = "--" + boundary + "\r\n" +
                 paramsContentDisposition + "\r\n" +
                 "\r\n" +
-                "{\"file1.txt\": {\"location\": \"invalid_uri\"}}" + "\r\n" +
+                params + "\r\n" +
                 "--" + boundary + "--";
         var request = HttpRequest.newBuilder(uri)
                 .header("Content-Type", contentTypeHeader)

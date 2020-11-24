@@ -149,6 +149,16 @@ public class OcflHttp extends AbstractHandler {
         return Path.of(fileURI);
     }
 
+    void closeFilesInputStreams(HashMap<String, InputStream> files) {
+        files.forEach((fileName, inputStream) -> {
+            try {
+                inputStream.close();
+            } catch (Exception e) {
+                System.out.println(e);
+            }
+        });
+    }
+
     HashMap<String, InputStream> getFiles(HttpServletRequest request) throws IOException, ServletException, InvalidLocationException {
         var files = new HashMap<String, InputStream>();
         JsonObject params = null;
@@ -226,13 +236,7 @@ public class OcflHttp extends AbstractHandler {
                     setResponseError(response, HttpServletResponse.SC_CONFLICT, e.getMessage());
                 }
             } finally {
-                files.forEach((fileName, inputStream) -> {
-                    try {
-                        inputStream.close();
-                    } catch (Exception e) {
-                        System.out.println(e);
-                    }
-                });
+                closeFilesInputStreams(files);
             }
         }
         catch(InvalidLocationException e) {
@@ -278,13 +282,7 @@ public class OcflHttp extends AbstractHandler {
                     setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
                 }
             } finally {
-                files.forEach((fileName, inputStream) -> {
-                    try {
-                        inputStream.close();
-                    } catch (Exception e) {
-                        System.out.println(e);
-                    }
-                });
+                closeFilesInputStreams(files);
             }
         }
         catch(InvalidLocationException e) {
