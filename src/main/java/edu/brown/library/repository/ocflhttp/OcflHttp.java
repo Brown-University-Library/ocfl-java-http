@@ -66,6 +66,7 @@ public class OcflHttp extends AbstractHandler {
     public static String IfNoneMatchHeader = "If-None-Match";
     public static String IfModifiedSinceHeader = "If-Modified-Since";
     public static String IncludeDeletedParameter = "includeDeleted";
+    public static String FieldsParameter = "fields";
     public static DateTimeFormatter IfModifiedFormatter = DateTimeFormatter.ofPattern("E, dd LLL uuuu kk:mm:ss O");
     private static final MultipartConfigElement MULTI_PART_CONFIG = new MultipartConfigElement(System.getProperty("java.io.tmpdir"));
     private static Logger logger = Logger.getLogger("edu.brown.library.repository.ocflhttp");
@@ -405,13 +406,13 @@ public class OcflHttp extends AbstractHandler {
         var method = request.getMethod();
         if(method.equals("GET")) {
             if (repo.containsObject(objectId)) {
-                var filesSet = new HashSet<String>();
+                var filesInfoMap = new HashMap<String, HashMap<String, String>>();
                 var includeDeletedParam = request.getParameter(IncludeDeletedParameter);
                 if(includeDeletedParam != null && includeDeletedParam.equals("1")) {
                     var versionDetails = repo.describeObject(objectId).getVersionMap().values();
                     for(VersionDetails v: versionDetails) {
                         for(FileDetails f: v.getFiles()) {
-                            filesSet.add(f.getPath());
+                            filesInfoMap.put(f.getPath(), new HashMap<>());
                         }
                     }
                 }
@@ -419,14 +420,27 @@ public class OcflHttp extends AbstractHandler {
                     var version = repo.describeVersion(ObjectVersionId.head(objectId));
                     var files = version.getFiles();
                     for (FileDetails f : files) {
-                        filesSet.add(f.getPath());
+                        var info = new HashMap<String, String>();
+                        var fieldsParam = request.getParameter(FieldsParameter);
+                        if(fieldsParam != null && !fieldsParam.isEmpty()) {
+                            var fields = fieldsParam.split(",");
+                            for(String field: fields) {
+                                if(field.equals("state")) {
+                                    info.put("state", "A");
+                                }
+                            }
+                        }
+                        filesInfoMap.put(f.getPath(), info);
                     }
                 }
-                var emptyOutput = Json.createObjectBuilder();
                 var filesOutput = Json.createObjectBuilder();
-                for(String path: filesSet) {
-                    filesOutput.add(path, emptyOutput);
-                }
+                filesInfoMap.forEach((fileName, info) -> {
+                    var infoOutput = Json.createObjectBuilder();
+                    info.forEach((key, val) -> {
+                        infoOutput.add(key, val);
+                    });
+                    filesOutput.add(fileName, infoOutput);
+                });
                 var output = Json.createObjectBuilder().add("files", filesOutput).build();
                 response.setStatus(HttpServletResponse.SC_OK);
                 response.addHeader("Accept-Ranges", "bytes");

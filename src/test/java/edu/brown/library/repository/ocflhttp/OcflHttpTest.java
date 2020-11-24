@@ -107,6 +107,18 @@ public class OcflHttpTest {
     }
 
     @Test
+    public void testGetFilesFields() throws Exception {
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)), "file1");
+        });
+        var url = "http://localhost:8000/" + encodedObjectId + "/files?fields=state";
+        var request = HttpRequest.newBuilder(URI.create(url)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(200, response.statusCode());
+        Assertions.assertEquals("{\"files\":{\"file1\":{\"state\":\"A\"}}}", response.body());
+    }
+
+    @Test
     public void testGetFilesAll() throws Exception {
         //add file1
         ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
