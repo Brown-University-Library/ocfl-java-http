@@ -281,6 +281,12 @@ public class OcflHttp extends AbstractHandler {
         }
     }
 
+    OffsetDateTime getFileLastModifiedUTC(String objectId, String path) {
+        var fileChangeHistory = repo.fileChangeHistory(objectId, path);
+        //make sure lastModified is converted to UTC
+        return fileChangeHistory.getMostRecent().getTimestamp().withOffsetSameInstant(ZoneOffset.UTC);
+    }
+
     void handleObjectPathGetHead(HttpServletRequest request,
                                  HttpServletResponse response,
                                  String objectId,
@@ -299,9 +305,7 @@ public class OcflHttp extends AbstractHandler {
             var filePath = repoRoot.resolve(file.getStorageRelativePath());
             var fileSize = Files.size(filePath);
             if(request.getMethod().equals("GET")) {
-                var fileChangeHistory = repo.fileChangeHistory(objectId, path);
-                //make sure lastModified is converted to UTC if needed
-                var fileLastModifiedUTC = fileChangeHistory.getMostRecent().getTimestamp().withOffsetSameInstant(ZoneOffset.UTC);
+                var fileLastModifiedUTC = getFileLastModifiedUTC(objectId, path);
                 var digestAlgorithm = repo.describeObject(objectId).getDigestAlgorithm();
                 var digestValue = file.getFixity().get(digestAlgorithm);
                 var ifNoneMatchHeader = request.getHeader(OcflHttp.IfNoneMatchHeader);
@@ -432,6 +436,10 @@ public class OcflHttp extends AbstractHandler {
                                 info.add("checksum", f.getFixity().get(DigestAlgorithm.sha512));
                                 info.add("checksumType", "SHA-512");
                                 break;
+                            case "lastModified":
+                                var lastModifiedUTC = getFileLastModifiedUTC(objectId, f.getPath());
+                                info.add("lastModified", lastModifiedUTC.format(DateTimeFormatter.ISO_DATE_TIME));
+                                break;
                         }
                     }
                     filesInfoMap.put(f.getPath(), info.build());
@@ -482,6 +490,10 @@ public class OcflHttp extends AbstractHandler {
                                                     break;
                                                 }
                                             }
+                                            break;
+                                        case "lastModified":
+                                            var lastModifiedUTC = getFileLastModifiedUTC(objectId, f.getPath());
+                                            info.add("lastModified", lastModifiedUTC.format(DateTimeFormatter.ISO_DATE_TIME));
                                             break;
                                     }
                                 }

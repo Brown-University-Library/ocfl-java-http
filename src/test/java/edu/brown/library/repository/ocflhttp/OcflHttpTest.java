@@ -161,7 +161,7 @@ public class OcflHttpTest {
             updater.removeFile("file1");
             updater.writeFile(new ByteArrayInputStream("file2 data".getBytes(StandardCharsets.UTF_8)), "file2");
         });
-        var url = "http://localhost:8000/" + encodedObjectId + "/files?" + OcflHttp.IncludeDeletedParameter + "=1&fields=state,size,mimetype,checksum";
+        var url = "http://localhost:8000/" + encodedObjectId + "/files?" + OcflHttp.IncludeDeletedParameter + "=1&fields=state,size,mimetype,checksum,lastModified";
         var request = HttpRequest.newBuilder(URI.create(url)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
@@ -173,12 +173,14 @@ public class OcflHttpTest {
         Assertions.assertEquals("77c7ce9a5d86bb386d443bb96390faa120633158699c8844c30b13ab0bf92760b7e4416aea397db91b4ac0e5dd56b8ef7e4b066162ab1fdc088319ce6defc876",
                 filesJson.getJsonObject("file1").getString("checksum"));
         Assertions.assertEquals("SHA-512", filesJson.getJsonObject("file1").getString("checksumType"));
+        Assertions.assertTrue(filesJson.getJsonObject("file1").getString("lastModified").endsWith("Z"));
         Assertions.assertEquals("A", filesJson.getJsonObject("file2").getString("state"));
         Assertions.assertEquals(10, filesJson.getJsonObject("file2").getInt("size"));
         Assertions.assertEquals("text/plain", filesJson.getJsonObject("file2").getString("mimetype"));
         Assertions.assertEquals("8fe4e3693f1e8090f279a969eec378086334b32b7457bfe1d16e6a3daa7ce60c26cc2e69c03af3d8b2b266844bf47f8ff7e0d6c70e1b90b6647f45dfc3c5f1ce",
                 filesJson.getJsonObject("file2").getString("checksum"));
         Assertions.assertEquals("SHA-512", filesJson.getJsonObject("file2").getString("checksumType"));
+        Assertions.assertTrue(filesJson.getJsonObject("file2").getString("lastModified").endsWith("Z"));
     }
 
     @Test
