@@ -428,8 +428,11 @@ public class OcflHttp extends AbstractHandler {
                                     info.add("mimetype", mimetype);
                                 }
                                 break;
+                            case "checksum":
+                                info.add("checksum", f.getFixity().get(DigestAlgorithm.sha512));
+                                info.add("checksumType", "SHA-512");
+                                break;
                         }
-
                     }
                     filesInfoMap.put(f.getPath(), info.build());
                 }
@@ -458,6 +461,7 @@ public class OcflHttp extends AbstractHandler {
                                                     var filePath = repoRoot.resolve(change.getStorageRelativePath());
                                                     var fileSize = Files.size(filePath);
                                                     info.add("size", fileSize);
+                                                    break;
                                                 }
                                             }
                                             break;
@@ -465,6 +469,18 @@ public class OcflHttp extends AbstractHandler {
                                             try(InputStream is = Files.newInputStream(repoRoot.resolve(f.getStorageRelativePath()))) {
                                                 var mimetype = getContentType(is, f.getPath());
                                                 info.add("mimetype", mimetype);
+                                            }
+                                            break;
+                                        case "checksum":
+                                            fileChanges = repo.fileChangeHistory(objectId, f.getPath());
+                                            it = fileChanges.getReverseChangeIterator();
+                                            while (it.hasNext()) {
+                                                var change = it.next();
+                                                if(!change.getChangeType().equals(FileChangeType.REMOVE)) {
+                                                    info.add("checksum", change.getFixity().get(DigestAlgorithm.sha512));
+                                                    info.add("checksumType", "SHA-512");
+                                                    break;
+                                                }
                                             }
                                             break;
                                     }
