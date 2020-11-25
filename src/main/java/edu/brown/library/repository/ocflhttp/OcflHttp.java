@@ -32,11 +32,7 @@ import javax.servlet.http.Part;
 import edu.wisc.library.ocfl.api.exception.FixityCheckException;
 import edu.wisc.library.ocfl.api.exception.ObjectOutOfSyncException;
 import edu.wisc.library.ocfl.api.io.FixityCheckInputStream;
-import edu.wisc.library.ocfl.api.model.FileDetails;
-import edu.wisc.library.ocfl.api.model.ObjectVersionId;
-import edu.wisc.library.ocfl.api.model.OcflObjectVersion;
-import edu.wisc.library.ocfl.api.model.VersionDetails;
-import edu.wisc.library.ocfl.api.model.VersionInfo;
+import edu.wisc.library.ocfl.api.model.*;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.AbstractHandler;
 import org.eclipse.jetty.server.Request;
@@ -411,43 +407,59 @@ public class OcflHttp extends AbstractHandler {
                     fieldsParam = "";
                 }
                 var fields = fieldsParam.split(",");
-                var filesInfoMap = new HashMap<String, HashMap<String, String>>();
-                //add active files
+                var filesInfoMap = new HashMap<String, JsonObject>();
+                //add all active files
                 var activeFiles = repo.describeVersion(ObjectVersionId.head(objectId)).getFiles();
                 for (FileDetails f : activeFiles) {
-                    var info = new HashMap<String, String>();
+                    var info = Json.createObjectBuilder();
                     for (String field : fields) {
-                        if (field.equals("state")) {
-                            info.put("state", "A");
+                        if(field.equals("state")) {
+                            info.add("state", "A");
+                        }
+                        if(field.equals("size")) {
+                            var filePath = repoRoot.resolve(f.getStorageRelativePath());
+                            var fileSize = Files.size(filePath);
+                            info.add("size", fileSize);
                         }
                     }
-                    filesInfoMap.put(f.getPath(), info);
+                    filesInfoMap.put(f.getPath(), info.build());
                 }
                 //now fill in deleted files if needed
                 var includeDeletedParam = request.getParameter(IncludeDeletedParameter);
                 if(includeDeletedParam != null && includeDeletedParam.equals("1")) {
-                    var versionDetails = repo.describeObject(objectId).getVersionMap().values();
-                    for(VersionDetails v: versionDetails) {
+                    var allObjectVersions = repo.describeObject(objectId).getVersionMap().values();
+                    for(VersionDetails v: allObjectVersions) {
+                        //for each version, add information for any file we don't have info for
+                        // When we're adding the file, we look at the whole file change history as needed, so
+                        // we don't have to worry about the order of the versions in allObjectVersions.
                         for(FileDetails f: v.getFiles()) {
                             if(!filesInfoMap.containsKey(f.getPath())) {
-                                var info = new HashMap<String, String>();
+                                var info = Json.createObjectBuilder();
                                 for (String field : fields) {
-                                    if (field.equals("state")) {
-                                        info.put("state", "D");
+                                    if(field.equals("state")) {
+                                        info.add("state", "D"); //at this stage we're only adding deleted files
+                                    }
+                                    if(field.equals("size")) {
+                                        var fileChanges = repo.fileChangeHistory(objectId, f.getPath());
+                                        var it = fileChanges.getReverseChangeIterator();
+                                        while(it.hasNext()) {
+                                            var change = it.next();
+                                            if(!change.getChangeType().equals(FileChangeType.REMOVE)) {
+                                                var filePath = repoRoot.resolve(change.getStorageRelativePath());
+                                                var fileSize = Files.size(filePath);
+                                                info.add("size", fileSize);
+                                            }
+                                        }
                                     }
                                 }
-                                filesInfoMap.put(f.getPath(), info);
+                                filesInfoMap.put(f.getPath(), info.build());
                             }
                         }
                     }
                 }
                 var filesOutput = Json.createObjectBuilder();
-                filesInfoMap.forEach((fileName, info) -> {
-                    var infoOutput = Json.createObjectBuilder();
-                    info.forEach((key, val) -> {
-                        infoOutput.add(key, val);
-                    });
-                    filesOutput.add(fileName, infoOutput);
+                filesInfoMap.forEach((fileName, jsonInfo) -> {
+                    filesOutput.add(fileName, jsonInfo);
                 });
                 var output = Json.createObjectBuilder().add("files", filesOutput).build();
                 response.setStatus(HttpServletResponse.SC_OK);

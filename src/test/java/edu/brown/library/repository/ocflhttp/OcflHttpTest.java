@@ -111,11 +111,14 @@ public class OcflHttpTest {
         ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
             updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)), "file1");
         });
-        var url = "http://localhost:8000/" + encodedObjectId + "/files?fields=state";
+        var url = "http://localhost:8000/" + encodedObjectId + "/files?fields=state,size";
         var request = HttpRequest.newBuilder(URI.create(url)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
-        Assertions.assertEquals("{\"files\":{\"file1\":{\"state\":\"A\"}}}", response.body());
+        JsonObject responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
+        var filesJson = responseJson.getJsonObject("files");
+        Assertions.assertEquals("A", filesJson.getJsonObject("file1").getString("state"));
+        Assertions.assertEquals(4, filesJson.getJsonObject("file1").getInt("size"));
     }
 
     @Test
@@ -158,14 +161,16 @@ public class OcflHttpTest {
             updater.removeFile("file1");
             updater.writeFile(new ByteArrayInputStream("file2 data".getBytes(StandardCharsets.UTF_8)), "file2");
         });
-        var url = "http://localhost:8000/" + encodedObjectId + "/files?" + OcflHttp.IncludeDeletedParameter + "=1&fields=state";
+        var url = "http://localhost:8000/" + encodedObjectId + "/files?" + OcflHttp.IncludeDeletedParameter + "=1&fields=state,size";
         var request = HttpRequest.newBuilder(URI.create(url)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
         JsonObject responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
         var filesJson = responseJson.getJsonObject("files");
         Assertions.assertEquals("D", filesJson.getJsonObject("file1").getString("state"));
+        Assertions.assertEquals(4, filesJson.getJsonObject("file1").getInt("size"));
         Assertions.assertEquals("A", filesJson.getJsonObject("file2").getString("state"));
+        Assertions.assertEquals(10, filesJson.getJsonObject("file2").getInt("size"));
     }
 
     @Test
