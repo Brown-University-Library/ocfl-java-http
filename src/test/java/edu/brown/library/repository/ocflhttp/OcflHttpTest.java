@@ -119,7 +119,7 @@ public class OcflHttpTest {
     }
 
     @Test
-    public void testGetFilesAll() throws Exception {
+    public void testGetAllFiles() throws Exception {
         //add file1
         ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
             updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)), "file1");
@@ -145,6 +145,27 @@ public class OcflHttpTest {
         var filesJson = responseJson.getJsonObject("files");
         Assertions.assertTrue(filesJson.containsKey("file1"));
         Assertions.assertTrue(filesJson.containsKey("file2"));
+    }
+
+    @Test
+    public void testGetAllFilesFields() throws Exception {
+        //add file1
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)), "file1");
+        });
+        //now delete file1 & add file2
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.removeFile("file1");
+            updater.writeFile(new ByteArrayInputStream("file2 data".getBytes(StandardCharsets.UTF_8)), "file2");
+        });
+        var url = "http://localhost:8000/" + encodedObjectId + "/files?" + OcflHttp.IncludeDeletedParameter + "=1&fields=state";
+        var request = HttpRequest.newBuilder(URI.create(url)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(200, response.statusCode());
+        JsonObject responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
+        var filesJson = responseJson.getJsonObject("files");
+        Assertions.assertEquals("D", filesJson.getJsonObject("file1").getString("state"));
+        Assertions.assertEquals("A", filesJson.getJsonObject("file2").getString("state"));
     }
 
     @Test

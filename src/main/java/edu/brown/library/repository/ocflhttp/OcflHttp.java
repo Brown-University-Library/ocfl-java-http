@@ -406,31 +406,39 @@ public class OcflHttp extends AbstractHandler {
         var method = request.getMethod();
         if(method.equals("GET")) {
             if (repo.containsObject(objectId)) {
+                var fieldsParam = request.getParameter(FieldsParameter);
+                if(fieldsParam == null) {
+                    fieldsParam = "";
+                }
+                var fields = fieldsParam.split(",");
                 var filesInfoMap = new HashMap<String, HashMap<String, String>>();
+                //add active files
+                var activeFiles = repo.describeVersion(ObjectVersionId.head(objectId)).getFiles();
+                for (FileDetails f : activeFiles) {
+                    var info = new HashMap<String, String>();
+                    for (String field : fields) {
+                        if (field.equals("state")) {
+                            info.put("state", "A");
+                        }
+                    }
+                    filesInfoMap.put(f.getPath(), info);
+                }
+                //now fill in deleted files if needed
                 var includeDeletedParam = request.getParameter(IncludeDeletedParameter);
                 if(includeDeletedParam != null && includeDeletedParam.equals("1")) {
                     var versionDetails = repo.describeObject(objectId).getVersionMap().values();
                     for(VersionDetails v: versionDetails) {
                         for(FileDetails f: v.getFiles()) {
-                            filesInfoMap.put(f.getPath(), new HashMap<>());
-                        }
-                    }
-                }
-                else {
-                    var version = repo.describeVersion(ObjectVersionId.head(objectId));
-                    var files = version.getFiles();
-                    for (FileDetails f : files) {
-                        var info = new HashMap<String, String>();
-                        var fieldsParam = request.getParameter(FieldsParameter);
-                        if(fieldsParam != null && !fieldsParam.isEmpty()) {
-                            var fields = fieldsParam.split(",");
-                            for(String field: fields) {
-                                if(field.equals("state")) {
-                                    info.put("state", "A");
+                            if(!filesInfoMap.containsKey(f.getPath())) {
+                                var info = new HashMap<String, String>();
+                                for (String field : fields) {
+                                    if (field.equals("state")) {
+                                        info.put("state", "D");
+                                    }
                                 }
+                                filesInfoMap.put(f.getPath(), info);
                             }
                         }
-                        filesInfoMap.put(f.getPath(), info);
                     }
                 }
                 var filesOutput = Json.createObjectBuilder();
@@ -446,7 +454,8 @@ public class OcflHttp extends AbstractHandler {
                 response.addHeader("Accept-Ranges", "bytes");
                 var writer = Json.createWriter(response.getWriter());
                 writer.writeObject(output);
-            } else {
+            }
+            else {
                 setResponseError(response, HttpServletResponse.SC_NOT_FOUND, objectId + " not found");
             }
         }
