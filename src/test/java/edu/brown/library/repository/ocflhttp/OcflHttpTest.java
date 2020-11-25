@@ -161,7 +161,7 @@ public class OcflHttpTest {
             updater.removeFile("file1");
             updater.writeFile(new ByteArrayInputStream("file2 data".getBytes(StandardCharsets.UTF_8)), "file2");
         });
-        var url = "http://localhost:8000/" + encodedObjectId + "/files?" + OcflHttp.IncludeDeletedParameter + "=1&fields=state,size";
+        var url = "http://localhost:8000/" + encodedObjectId + "/files?" + OcflHttp.IncludeDeletedParameter + "=1&fields=state,size,mimetype";
         var request = HttpRequest.newBuilder(URI.create(url)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
@@ -169,8 +169,10 @@ public class OcflHttpTest {
         var filesJson = responseJson.getJsonObject("files");
         Assertions.assertEquals("D", filesJson.getJsonObject("file1").getString("state"));
         Assertions.assertEquals(4, filesJson.getJsonObject("file1").getInt("size"));
+        Assertions.assertEquals("text/plain", filesJson.getJsonObject("file1").getString("mimetype"));
         Assertions.assertEquals("A", filesJson.getJsonObject("file2").getString("state"));
         Assertions.assertEquals(10, filesJson.getJsonObject("file2").getInt("size"));
+        Assertions.assertEquals("text/plain", filesJson.getJsonObject("file2").getString("mimetype"));
     }
 
     @Test

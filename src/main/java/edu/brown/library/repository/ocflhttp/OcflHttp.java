@@ -413,14 +413,23 @@ public class OcflHttp extends AbstractHandler {
                 for (FileDetails f : activeFiles) {
                     var info = Json.createObjectBuilder();
                     for (String field : fields) {
-                        if(field.equals("state")) {
-                            info.add("state", "A");
+                        switch (field) {
+                            case "state":
+                                info.add("state", "A");
+                                break;
+                            case "size":
+                                var filePath = repoRoot.resolve(f.getStorageRelativePath());
+                                var fileSize = Files.size(filePath);
+                                info.add("size", fileSize);
+                                break;
+                            case "mimetype":
+                                try(InputStream is = repo.getObject(ObjectVersionId.head(objectId)).getFile(f.getPath()).getStream()) {
+                                    var mimetype = getContentType(is, f.getPath());
+                                    info.add("mimetype", mimetype);
+                                }
+                                break;
                         }
-                        if(field.equals("size")) {
-                            var filePath = repoRoot.resolve(f.getStorageRelativePath());
-                            var fileSize = Files.size(filePath);
-                            info.add("size", fileSize);
-                        }
+
                     }
                     filesInfoMap.put(f.getPath(), info.build());
                 }
@@ -436,20 +445,28 @@ public class OcflHttp extends AbstractHandler {
                             if(!filesInfoMap.containsKey(f.getPath())) {
                                 var info = Json.createObjectBuilder();
                                 for (String field : fields) {
-                                    if(field.equals("state")) {
-                                        info.add("state", "D"); //at this stage we're only adding deleted files
-                                    }
-                                    if(field.equals("size")) {
-                                        var fileChanges = repo.fileChangeHistory(objectId, f.getPath());
-                                        var it = fileChanges.getReverseChangeIterator();
-                                        while(it.hasNext()) {
-                                            var change = it.next();
-                                            if(!change.getChangeType().equals(FileChangeType.REMOVE)) {
-                                                var filePath = repoRoot.resolve(change.getStorageRelativePath());
-                                                var fileSize = Files.size(filePath);
-                                                info.add("size", fileSize);
+                                    switch (field) {
+                                        case "state":
+                                            info.add("state", "D"); //at this stage we're only adding deleted files
+                                            break;
+                                        case "size":
+                                            var fileChanges = repo.fileChangeHistory(objectId, f.getPath());
+                                            var it = fileChanges.getReverseChangeIterator();
+                                            while (it.hasNext()) {
+                                                var change = it.next();
+                                                if (!change.getChangeType().equals(FileChangeType.REMOVE)) {
+                                                    var filePath = repoRoot.resolve(change.getStorageRelativePath());
+                                                    var fileSize = Files.size(filePath);
+                                                    info.add("size", fileSize);
+                                                }
                                             }
-                                        }
+                                            break;
+                                        case "mimetype":
+                                            try(InputStream is = Files.newInputStream(repoRoot.resolve(f.getStorageRelativePath()))) {
+                                                var mimetype = getContentType(is, f.getPath());
+                                                info.add("mimetype", mimetype);
+                                            }
+                                            break;
                                     }
                                 }
                                 filesInfoMap.put(f.getPath(), info.build());
