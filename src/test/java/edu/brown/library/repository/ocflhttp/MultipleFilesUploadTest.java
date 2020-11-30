@@ -243,6 +243,7 @@ public class MultipleFilesUploadTest {
                 .POST(HttpRequest.BodyPublishers.ofString(multipartData)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(400, response.statusCode());
+        Assertions.assertEquals("invalid character in filename", response.body());
     }
 
     @Test
