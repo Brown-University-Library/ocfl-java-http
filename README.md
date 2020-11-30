@@ -8,7 +8,7 @@ API
 - GET /
     - returns {"OCFL ROOT": ...} as JSON
 - GET /<object_id>/files
-    - add includeDeleted=1 URL param to request all files, not just currently active ones
+    - add includeDeleted=true URL param to request all files, not just currently active ones
     - add fields=state,size,mimetype,checksum,lastModified URL param to request 1 or more pieces of information about the files
         - state: "A" for currently active files, "D" for files that have been removed in a later OCFL version
         - size: # of bytes
