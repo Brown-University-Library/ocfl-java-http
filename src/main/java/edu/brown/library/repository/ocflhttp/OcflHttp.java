@@ -6,8 +6,10 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLDecoder;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -15,6 +17,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.regex.Pattern;
 import java.util.logging.Logger;
 import javax.json.Json;
@@ -27,18 +30,15 @@ import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.Part;
 
 import edu.wisc.library.ocfl.api.exception.FixityCheckException;
+import edu.wisc.library.ocfl.api.exception.ObjectOutOfSyncException;
 import edu.wisc.library.ocfl.api.io.FixityCheckInputStream;
-import edu.wisc.library.ocfl.api.model.OcflObjectVersion;
+import edu.wisc.library.ocfl.api.model.*;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.AbstractHandler;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import edu.wisc.library.ocfl.api.exception.NotFoundException;
 import edu.wisc.library.ocfl.api.OcflRepository;
-import edu.wisc.library.ocfl.api.model.FileDetails;
-import edu.wisc.library.ocfl.api.model.VersionInfo;
-import edu.wisc.library.ocfl.api.model.ObjectVersionId;
-import edu.wisc.library.ocfl.api.exception.OverwriteException;
 import edu.wisc.library.ocfl.core.OcflRepositoryBuilder;
 import edu.wisc.library.ocfl.core.extension.storage.layout.config.HashedTruncatedNTupleIdConfig;
 import edu.wisc.library.ocfl.core.storage.filesystem.FileSystemOcflStorage;
@@ -46,16 +46,23 @@ import org.apache.tika.Tika;
 
 import static edu.wisc.library.ocfl.api.OcflOption.OVERWRITE;
 
+class InvalidLocationException extends Exception {
+    public InvalidLocationException(String errMessage) {
+        super(errMessage);
+    }
+}
+
 public class OcflHttp extends AbstractHandler {
 
     final String objectIdRegex = "[-:_. %a-zA-Z0-9]+";
     final String fileNameRegex = "[-:_. %a-zA-Z0-9]+";
     final Pattern ObjectIdFilesPattern = Pattern.compile("^/(" + objectIdRegex + ")/files$");
     final Pattern ObjectIdPathContentPattern = Pattern.compile("^/(" + objectIdRegex + ")/files/(" + fileNameRegex + ")/content$");
-    final Pattern ObjectIdPathPattern = Pattern.compile("^/(" + objectIdRegex + ")/files/(" + fileNameRegex + ")$");
     final long ChunkSize = 1000L;
     public static String IfNoneMatchHeader = "If-None-Match";
     public static String IfModifiedSinceHeader = "If-Modified-Since";
+    public static String IncludeDeletedParameter = "includeDeleted";
+    public static String FieldsParameter = "fields";
     public static DateTimeFormatter IfModifiedFormatter = DateTimeFormatter.ofPattern("E, dd LLL uuuu kk:mm:ss O");
     private static final MultipartConfigElement MULTI_PART_CONFIG = new MultipartConfigElement(System.getProperty("java.io.tmpdir"));
     private static Logger logger = Logger.getLogger("edu.brown.library.repository.ocflhttp");
@@ -75,20 +82,9 @@ public class OcflHttp extends AbstractHandler {
                 .build();
     }
 
-    void writeFileToObject(String objectId, InputStream content, String path, VersionInfo versionInfo, boolean overwrite)
+    void writeFilesToObject(ObjectVersionId objectVersionId, HashMap<String, InputStream> files, VersionInfo versionInfo, boolean overwrite)
     {
-        repo.updateObject(ObjectVersionId.head(objectId), versionInfo, updater -> {
-                    if(overwrite) {
-                        updater.writeFile(content, path, OVERWRITE);
-                    } else {
-                        updater.writeFile(content, path);
-                    }
-                });
-    }
-
-    void writeFilesToObject(String objectId, HashMap<String, InputStream> files, VersionInfo versionInfo, boolean overwrite)
-    {
-        repo.updateObject(ObjectVersionId.head(objectId), versionInfo, updater -> {
+        repo.updateObject(objectVersionId, versionInfo, updater -> {
                 files.forEach((fileName, inputStream) -> {
                     if(overwrite) {
                         updater.writeFile(inputStream, fileName, OVERWRITE);
@@ -142,7 +138,17 @@ public class OcflHttp extends AbstractHandler {
         return Path.of(fileURI);
     }
 
-    HashMap<String, InputStream> getFiles(HttpServletRequest request) throws IOException, ServletException, URISyntaxException {
+    void closeFilesInputStreams(HashMap<String, InputStream> files) {
+        files.forEach((fileName, inputStream) -> {
+            try {
+                inputStream.close();
+            } catch (Exception e) {
+                logger.severe(e.getMessage());
+            }
+        });
+    }
+
+    HashMap<String, InputStream> getFiles(HttpServletRequest request) throws IOException, ServletException, InvalidLocationException {
         var files = new HashMap<String, InputStream>();
         JsonObject params = null;
         for(Part p: request.getParts()) {
@@ -156,32 +162,47 @@ public class OcflHttp extends AbstractHandler {
             }
         }
         var entries = params.entrySet().iterator();
-        while(entries.hasNext()) {
-            var entry = entries.next();
-            var fileName = entry.getKey();
-            var fileInfo = entry.getValue().asJsonObject();
-            if(fileInfo != null) {
-                if(fileInfo.containsKey("location")) {
-                    var encodedFileURI = fileInfo.getString("location");
-                    if (encodedFileURI != null && !encodedFileURI.isEmpty()) {
-                        var inputStream = Files.newInputStream(pathFromEncodedURI(encodedFileURI));
-                        files.put(fileName, inputStream);
-                    }
-                }
-                if(fileInfo.containsKey("checksum")) {
-                    var checksum = fileInfo.getString("checksum");
-                    if (checksum != null && !checksum.isEmpty()) {
-                        var checksumType = "MD5";
-                        if(fileInfo.containsKey("checksumType")) {
-                            checksumType = fileInfo.getString("checksumType");
-                            if (checksumType == null || checksumType.isEmpty()) {
-                                checksumType = "MD5";
+        try {
+            while (entries.hasNext()) {
+                var entry = entries.next();
+                var fileName = entry.getKey();
+                var fileInfo = entry.getValue().asJsonObject();
+                if (fileInfo != null) {
+                    if (fileInfo.containsKey("location")) {
+                        var encodedFileURI = fileInfo.getString("location");
+                        if (encodedFileURI != null && !encodedFileURI.isEmpty()) {
+                            try {
+                                var path = pathFromEncodedURI(encodedFileURI);
+                                var inputStream = Files.newInputStream(path);
+                                files.put(fileName, inputStream);
+                            } catch (URISyntaxException | IllegalArgumentException e) {
+                                logger.warning(e.getMessage());
+                                throw new InvalidLocationException("invalid location: " + encodedFileURI);
+                            } catch (NoSuchFileException e) {
+                                logger.warning(e.getMessage());
+                                throw new InvalidLocationException("invalid location - no such file: " + encodedFileURI);
                             }
                         }
-                        files.put(fileName, new FixityCheckInputStream(files.get(fileName), checksumType, checksum));
+                    }
+                    if (fileInfo.containsKey("checksum")) {
+                        var checksum = fileInfo.getString("checksum");
+                        if (checksum != null && !checksum.isEmpty()) {
+                            var checksumType = "MD5";
+                            if (fileInfo.containsKey("checksumType")) {
+                                checksumType = fileInfo.getString("checksumType");
+                                if (checksumType == null || checksumType.isEmpty()) {
+                                    checksumType = "MD5";
+                                }
+                            }
+                            files.put(fileName, new FixityCheckInputStream(files.get(fileName), checksumType, checksum));
+                        }
                     }
                 }
             }
+        }
+        catch (Exception e) {
+            closeFilesInputStreams(files);
+            throw e;
         }
         return files;
     }
@@ -189,76 +210,81 @@ public class OcflHttp extends AbstractHandler {
     void handleObjectFilesPost(HttpServletRequest request,
                                HttpServletResponse response,
                                String objectId)
-            throws IOException, ServletException, URISyntaxException
+            throws IOException, ServletException
     {
-        if (repo.containsObject(objectId)) {
-            setResponseError(response, HttpServletResponse.SC_CONFLICT, "object " + objectId + " already exists. Use PUT to update it.");
-            return;
-        }
         var versionInfo = getVersionInfo(request);
-        var files = getFiles(request);
         try {
+            var files = getFiles(request);
             try {
-                writeFilesToObject(objectId, files, versionInfo, false);
-                response.setStatus(HttpServletResponse.SC_CREATED);
-            } catch (OverwriteException e) {
-                setResponseError(response, HttpServletResponse.SC_CONFLICT, "");
-            } catch (FixityCheckException e) {
-                setResponseError(response, HttpServletResponse.SC_CONFLICT, e.getMessage());
+                try {
+                    //version 0 is the way to tell ocfl-java you want to write version 1 of a new object
+                    writeFilesToObject(ObjectVersionId.version(objectId, 0), files, versionInfo, false);
+                    response.setStatus(HttpServletResponse.SC_CREATED);
+                } catch (ObjectOutOfSyncException e) {
+                    setResponseError(response, HttpServletResponse.SC_CONFLICT, "object " + objectId + " already exists. Use PUT to update it.");
+                } catch (FixityCheckException e) {
+                    setResponseError(response, HttpServletResponse.SC_CONFLICT, e.getMessage());
+                }
+            } finally {
+                closeFilesInputStreams(files);
             }
         }
-        finally {
-            files.forEach((fileName, inputStream) -> {
-                try {
-                    inputStream.close();
-                } catch(Exception e) {System.out.println(e);}
-            });
+        catch(InvalidLocationException e) {
+            logger.warning(e.getMessage());
+            setResponseError(response, HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
         }
     }
 
     void handleObjectFilesPut(HttpServletRequest request,
                                HttpServletResponse response,
                                String objectId)
-            throws IOException, ServletException, URISyntaxException
+            throws IOException, ServletException
     {
         var versionInfo = getVersionInfo(request);
-        var files = getFiles(request);
         try {
-            if (repo.containsObject(objectId)) {
-                var object = repo.getObject(ObjectVersionId.head(objectId));
-                //check that all files exist
-                var existingFiles = new ArrayList<String>();
-                files.forEach((fileName, inputStream) -> {
-                    if (object.containsFile(fileName)) {
-                        existingFiles.add(fileName);
+            var files = getFiles(request);
+            try {
+                if (repo.containsObject(objectId)) {
+                    var object = repo.getObject(ObjectVersionId.head(objectId));
+                    //check that all files exist
+                    var existingFiles = new ArrayList<String>();
+                    files.forEach((fileName, inputStream) -> {
+                        if (object.containsFile(fileName)) {
+                            existingFiles.add(fileName);
+                        }
+                    });
+                    if (!existingFiles.isEmpty()) {
+                        var updateExisting = request.getParameter("updateExisting");
+                        if (updateExisting == null || !updateExisting.equals("yes")) {
+                            var msg = "files " + existingFiles + " already exist. Add updateExisting=yes parameter to the URL to update them.";
+                            setResponseError(response, HttpServletResponse.SC_CONFLICT, msg);
+                            return;
+                        }
                     }
-                });
-                if (!existingFiles.isEmpty()) {
-                    var updateExisting = request.getParameter("updateExisting");
-                    if(updateExisting == null || !updateExisting.equals("yes")) {
-                        var msg = "files " + existingFiles + " already exist. Add updateExisting=yes parameter to the URL to update them.";
-                        setResponseError(response, HttpServletResponse.SC_CONFLICT, msg);
-                        return;
+                    try {
+                        writeFilesToObject(ObjectVersionId.head(objectId), files, versionInfo, true);
+                        response.setStatus(HttpServletResponse.SC_CREATED);
+                    } catch (FixityCheckException e) {
+                        setResponseError(response, HttpServletResponse.SC_CONFLICT, e.getMessage());
                     }
+                } else {
+                    var msg = objectId + " doesn't exist. Use POST to create it.";
+                    setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
                 }
-                try {
-                    writeFilesToObject(objectId, files, versionInfo, true);
-                    response.setStatus(HttpServletResponse.SC_CREATED);
-                } catch (FixityCheckException e) {
-                    setResponseError(response, HttpServletResponse.SC_CONFLICT, e.getMessage());
-                }
-            } else {
-                var msg = objectId + " doesn't exist. Use POST to create it.";
-                setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
+            } finally {
+                closeFilesInputStreams(files);
             }
         }
-        finally {
-            files.forEach((fileName, inputStream) -> {
-                try {
-                    inputStream.close();
-                } catch(Exception e) {System.out.println(e);}
-            });
+        catch(InvalidLocationException e) {
+            logger.warning(e.getMessage());
+            setResponseError(response, HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
         }
+    }
+
+    OffsetDateTime getFileLastModifiedUTC(String objectId, String path) {
+        var fileChangeHistory = repo.fileChangeHistory(objectId, path);
+        //make sure lastModified is converted to UTC
+        return fileChangeHistory.getMostRecent().getTimestamp().withOffsetSameInstant(ZoneOffset.UTC);
     }
 
     void handleObjectPathGetHead(HttpServletRequest request,
@@ -279,9 +305,7 @@ public class OcflHttp extends AbstractHandler {
             var filePath = repoRoot.resolve(file.getStorageRelativePath());
             var fileSize = Files.size(filePath);
             if(request.getMethod().equals("GET")) {
-                var fileChangeHistory = repo.fileChangeHistory(objectId, path);
-                //make sure lastModified is converted to UTC if needed
-                var fileLastModifiedUTC = fileChangeHistory.getMostRecent().getTimestamp().withOffsetSameInstant(ZoneOffset.UTC);
+                var fileLastModifiedUTC = getFileLastModifiedUTC(objectId, path);
                 var digestAlgorithm = repo.describeObject(objectId).getDigestAlgorithm();
                 var digestValue = file.getFixity().get(digestAlgorithm);
                 var ifNoneMatchHeader = request.getHeader(OcflHttp.IfNoneMatchHeader);
@@ -322,7 +346,7 @@ public class OcflHttp extends AbstractHandler {
                     var lastModifiedHeader = fileLastModifiedUTC.format(OcflHttp.IfModifiedFormatter);
                     response.addHeader("Last-Modified", lastModifiedHeader);
                     response.addHeader("ETag", "\"" + digestValue + "\"");
-                    response.addHeader("Content-Disposition", "attachment; filename=\"" + path + "\"");
+                    response.addHeader("Content-Disposition", "attachment; filename*=UTF-8''" + URLEncoder.encode(path, StandardCharsets.UTF_8));
                 }
                 try (var stream = file.getStream().enableFixityCheck(false)) {
                     try (var outputStream = response.getOutputStream()) {
@@ -377,24 +401,118 @@ public class OcflHttp extends AbstractHandler {
     void handleObjectFiles(HttpServletRequest request,
                            HttpServletResponse response,
                            String objectId)
-        throws IOException, ServletException, URISyntaxException
+        throws IOException, ServletException
     {
         var method = request.getMethod();
         if(method.equals("GET")) {
             if (repo.containsObject(objectId)) {
-                var version = repo.describeVersion(ObjectVersionId.head(objectId));
-                var files = version.getFiles();
-                var emptyOutput = Json.createObjectBuilder();
-                var filesOutput = Json.createObjectBuilder();
-                for (FileDetails f : files) {
-                    filesOutput.add(f.getPath(), emptyOutput);
+                var fieldsParam = request.getParameter(FieldsParameter);
+                if(fieldsParam == null) {
+                    fieldsParam = "";
                 }
+                var fields = fieldsParam.split(",");
+                var filesInfoMap = new HashMap<String, JsonObject>();
+                //add all active files
+                var activeFiles = repo.describeVersion(ObjectVersionId.head(objectId)).getFiles();
+                for (FileDetails f : activeFiles) {
+                    var info = Json.createObjectBuilder();
+                    for (String field : fields) {
+                        switch (field) {
+                            case "state":
+                                info.add("state", "A");
+                                break;
+                            case "size":
+                                var filePath = repoRoot.resolve(f.getStorageRelativePath());
+                                var fileSize = Files.size(filePath);
+                                info.add("size", fileSize);
+                                break;
+                            case "mimetype":
+                                try(InputStream is = repo.getObject(ObjectVersionId.head(objectId)).getFile(f.getPath()).getStream()) {
+                                    var mimetype = getContentType(is, f.getPath());
+                                    info.add("mimetype", mimetype);
+                                }
+                                break;
+                            case "checksum":
+                                info.add("checksum", f.getFixity().get(DigestAlgorithm.sha512));
+                                info.add("checksumType", "SHA-512");
+                                break;
+                            case "lastModified":
+                                var lastModifiedUTC = getFileLastModifiedUTC(objectId, f.getPath());
+                                info.add("lastModified", lastModifiedUTC.format(DateTimeFormatter.ISO_DATE_TIME));
+                                break;
+                        }
+                    }
+                    filesInfoMap.put(f.getPath(), info.build());
+                }
+                //now fill in deleted files if needed
+                var includeDeletedParam = request.getParameter(IncludeDeletedParameter);
+                if(includeDeletedParam != null && includeDeletedParam.equals("1")) {
+                    var allObjectVersions = repo.describeObject(objectId).getVersionMap().values();
+                    for(VersionDetails v: allObjectVersions) {
+                        //for each version, add information for any file we don't have info for
+                        // When we're adding the file, we look at the whole file change history as needed, so
+                        // we don't have to worry about the order of the versions in allObjectVersions.
+                        for(FileDetails f: v.getFiles()) {
+                            if(!filesInfoMap.containsKey(f.getPath())) {
+                                var info = Json.createObjectBuilder();
+                                for (String field : fields) {
+                                    switch (field) {
+                                        case "state":
+                                            info.add("state", "D"); //at this stage we're only adding deleted files
+                                            break;
+                                        case "size":
+                                            var fileChanges = repo.fileChangeHistory(objectId, f.getPath());
+                                            var it = fileChanges.getReverseChangeIterator();
+                                            while (it.hasNext()) {
+                                                var change = it.next();
+                                                if (!change.getChangeType().equals(FileChangeType.REMOVE)) {
+                                                    var filePath = repoRoot.resolve(change.getStorageRelativePath());
+                                                    var fileSize = Files.size(filePath);
+                                                    info.add("size", fileSize);
+                                                    break;
+                                                }
+                                            }
+                                            break;
+                                        case "mimetype":
+                                            try(InputStream is = Files.newInputStream(repoRoot.resolve(f.getStorageRelativePath()))) {
+                                                var mimetype = getContentType(is, f.getPath());
+                                                info.add("mimetype", mimetype);
+                                            }
+                                            break;
+                                        case "checksum":
+                                            fileChanges = repo.fileChangeHistory(objectId, f.getPath());
+                                            it = fileChanges.getReverseChangeIterator();
+                                            while (it.hasNext()) {
+                                                var change = it.next();
+                                                if(!change.getChangeType().equals(FileChangeType.REMOVE)) {
+                                                    info.add("checksum", change.getFixity().get(DigestAlgorithm.sha512));
+                                                    info.add("checksumType", "SHA-512");
+                                                    break;
+                                                }
+                                            }
+                                            break;
+                                        case "lastModified":
+                                            var lastModifiedUTC = getFileLastModifiedUTC(objectId, f.getPath());
+                                            info.add("lastModified", lastModifiedUTC.format(DateTimeFormatter.ISO_DATE_TIME));
+                                            break;
+                                    }
+                                }
+                                filesInfoMap.put(f.getPath(), info.build());
+                            }
+                        }
+                    }
+                }
+                var filesOutput = Json.createObjectBuilder();
+                filesInfoMap.forEach((fileName, jsonInfo) -> {
+                    filesOutput.add(fileName, jsonInfo);
+                });
                 var output = Json.createObjectBuilder().add("files", filesOutput).build();
                 response.setStatus(HttpServletResponse.SC_OK);
                 response.addHeader("Accept-Ranges", "bytes");
                 var writer = Json.createWriter(response.getWriter());
                 writer.writeObject(output);
-            } else {
+            }
+            else {
                 setResponseError(response, HttpServletResponse.SC_NOT_FOUND, objectId + " not found");
             }
         }
@@ -402,13 +520,13 @@ public class OcflHttp extends AbstractHandler {
             if(method.equals("POST")) {
                 try {
                     handleObjectFilesPost(request, response, objectId);
-                } catch(Exception e) {System.out.println(e); e.printStackTrace(); throw e;}
+                } catch(Exception e) {logger.severe(e.getMessage()); throw e;}
             }
             else {
                 if(method.equals("PUT")) {
                     try {
                         handleObjectFilesPut(request, response, objectId);
-                    } catch(Exception e) {System.out.println(e); e.printStackTrace(); throw e;}
+                    } catch(Exception e) {logger.severe(e.getMessage()); throw e;}
                 }
             }
         }
@@ -429,25 +547,19 @@ public class OcflHttp extends AbstractHandler {
             handleRoot(response);
         }
         else {
-            try {
-                var matcher = ObjectIdFilesPattern.matcher(updatedRequestURI);
-                if (matcher.matches()) {
-                    var objectId = matcher.group(1);
-                    handleObjectFiles(request, response, objectId);
+            var matcher = ObjectIdFilesPattern.matcher(updatedRequestURI);
+            if (matcher.matches()) {
+                var objectId = URLDecoder.decode(matcher.group(1), StandardCharsets.UTF_8.toString());
+                handleObjectFiles(request, response, objectId);
+            } else {
+                var matcher2 = ObjectIdPathContentPattern.matcher(updatedRequestURI);
+                if (matcher2.matches()) {
+                    var objectId = URLDecoder.decode(matcher2.group(1), StandardCharsets.UTF_8.toString());
+                    var path = URLDecoder.decode(matcher2.group(2), StandardCharsets.UTF_8.toString());
+                    handleObjectPathContent(request, response, objectId, path);
                 } else {
-                    var matcher2 = ObjectIdPathContentPattern.matcher(updatedRequestURI);
-                    if (matcher2.matches()) {
-                        var objectId = URLDecoder.decode(matcher2.group(1), StandardCharsets.UTF_8.toString());
-                        var path = URLDecoder.decode(matcher2.group(2), StandardCharsets.UTF_8.toString());
-                        handleObjectPathContent(request, response, objectId, path);
-                    } else {
-                        response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-                    }
+                    response.setStatus(HttpServletResponse.SC_NOT_FOUND);
                 }
-            }
-            catch(URISyntaxException e) {
-                logger.warning(e.getMessage());
-                setResponseError(response, HttpServletResponse.SC_BAD_REQUEST, "invalid URI in request");
             }
         }
         baseRequest.setHandled(true);

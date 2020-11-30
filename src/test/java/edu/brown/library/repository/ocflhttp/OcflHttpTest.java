@@ -1,6 +1,7 @@
 package edu.brown.library.repository.ocflhttp;
 
 import java.io.ByteArrayInputStream;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.URI;
@@ -9,6 +10,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.OffsetDateTime;
+
+import edu.wisc.library.ocfl.api.model.ObjectVersionId;
 import edu.wisc.library.ocfl.api.model.VersionInfo;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
@@ -16,6 +19,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
+
+import javax.json.Json;
+import javax.json.JsonObject;
 
 
 public class OcflHttpTest {
@@ -25,7 +31,10 @@ public class OcflHttpTest {
     Path tmpRoot;
     Path workDir;
     HttpClient client;
-    String objectId = "testsuite:1";
+    String objectId = "testsuite:nâtiôn";
+    String encodedObjectId = URLEncoder.encode(objectId, StandardCharsets.UTF_8);
+    String fileName = "nâtiôn.txt";
+    String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8);
 
     @BeforeEach
     private void setup() throws Exception {
@@ -75,24 +84,103 @@ public class OcflHttpTest {
     }
 
     @Test
-    public void testObjectFiles() throws Exception {
-        ocflHttp.writeFileToObject("testsuite:1",
-                new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)),
-                "file1", new VersionInfo(), false);
-        var url = "http://localhost:8000/testsuite:1/files";
+    public void testGetFilesObjectNotFound() throws Exception {
+        //now test object that doesn't exist
+        var url = "http://localhost:8000/testsuite:notfound/files";
+        var request = HttpRequest.newBuilder(URI.create(url)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(404, response.statusCode());
+        Assertions.assertEquals("testsuite:notfound not found", response.body());
+    }
+
+    @Test
+    public void testGetFiles() throws Exception {
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+                updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)),"file1");
+        });
+        var url = "http://localhost:8000/" + encodedObjectId + "/files";
         var request = HttpRequest.newBuilder(URI.create(url)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
         Assertions.assertEquals("bytes", response.headers().firstValue("Accept-Ranges").get());
-        var body = response.body();
-        Assertions.assertEquals("{\"files\":{\"file1\":{}}}", body);
+        Assertions.assertEquals("{\"files\":{\"file1\":{}}}", response.body());
+    }
 
-        //now test object that doesn't exist
-        url = "http://localhost:8000/testsuite:notfound/files";
+    @Test
+    public void testGetFilesFields() throws Exception {
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)), "file1");
+        });
+        var url = "http://localhost:8000/" + encodedObjectId + "/files?fields=state,size";
+        var request = HttpRequest.newBuilder(URI.create(url)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(200, response.statusCode());
+        JsonObject responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
+        var filesJson = responseJson.getJsonObject("files");
+        Assertions.assertEquals("A", filesJson.getJsonObject("file1").getString("state"));
+        Assertions.assertEquals(4, filesJson.getJsonObject("file1").getInt("size"));
+    }
+
+    @Test
+    public void testGetAllFiles() throws Exception {
+        //add file1
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)), "file1");
+        });
+        //now delete file1 & add file2
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.removeFile("file1");
+            updater.writeFile(new ByteArrayInputStream("file2 data".getBytes(StandardCharsets.UTF_8)), "file2");
+        });
+        //url w/ no param should just return active/not-deleted files
+        var url = "http://localhost:8000/" + encodedObjectId + "/files";
+        var request = HttpRequest.newBuilder(URI.create(url)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(200, response.statusCode());
+        Assertions.assertEquals("{\"files\":{\"file2\":{}}}", response.body());
+
+        //now include deleted files
+        url = "http://localhost:8000/" + encodedObjectId + "/files?" + OcflHttp.IncludeDeletedParameter + "=1";
         request = HttpRequest.newBuilder(URI.create(url)).build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        Assertions.assertEquals(404, response.statusCode());
-        Assertions.assertEquals("testsuite:notfound not found", response.body());
+        Assertions.assertEquals(200, response.statusCode());
+        JsonObject responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
+        var filesJson = responseJson.getJsonObject("files");
+        Assertions.assertTrue(filesJson.containsKey("file1"));
+        Assertions.assertTrue(filesJson.containsKey("file2"));
+    }
+
+    @Test
+    public void testGetAllFilesFields() throws Exception {
+        //add file1
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)), "file1");
+        });
+        //now delete file1 & add file2
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.removeFile("file1");
+            updater.writeFile(new ByteArrayInputStream("file2 data".getBytes(StandardCharsets.UTF_8)), "file2");
+        });
+        var url = "http://localhost:8000/" + encodedObjectId + "/files?" + OcflHttp.IncludeDeletedParameter + "=1&fields=state,size,mimetype,checksum,lastModified";
+        var request = HttpRequest.newBuilder(URI.create(url)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(200, response.statusCode());
+        JsonObject responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
+        var filesJson = responseJson.getJsonObject("files");
+        Assertions.assertEquals("D", filesJson.getJsonObject("file1").getString("state"));
+        Assertions.assertEquals(4, filesJson.getJsonObject("file1").getInt("size"));
+        Assertions.assertEquals("text/plain", filesJson.getJsonObject("file1").getString("mimetype"));
+        Assertions.assertEquals("77c7ce9a5d86bb386d443bb96390faa120633158699c8844c30b13ab0bf92760b7e4416aea397db91b4ac0e5dd56b8ef7e4b066162ab1fdc088319ce6defc876",
+                filesJson.getJsonObject("file1").getString("checksum"));
+        Assertions.assertEquals("SHA-512", filesJson.getJsonObject("file1").getString("checksumType"));
+        Assertions.assertTrue(filesJson.getJsonObject("file1").getString("lastModified").endsWith("Z"));
+        Assertions.assertEquals("A", filesJson.getJsonObject("file2").getString("state"));
+        Assertions.assertEquals(10, filesJson.getJsonObject("file2").getInt("size"));
+        Assertions.assertEquals("text/plain", filesJson.getJsonObject("file2").getString("mimetype"));
+        Assertions.assertEquals("8fe4e3693f1e8090f279a969eec378086334b32b7457bfe1d16e6a3daa7ce60c26cc2e69c03af3d8b2b266844bf47f8ff7e0d6c70e1b90b6647f45dfc3c5f1ce",
+                filesJson.getJsonObject("file2").getString("checksum"));
+        Assertions.assertEquals("SHA-512", filesJson.getJsonObject("file2").getString("checksumType"));
+        Assertions.assertTrue(filesJson.getJsonObject("file2").getString("lastModified").endsWith("Z"));
     }
 
     @Test
@@ -102,24 +190,24 @@ public class OcflHttpTest {
         var request = HttpRequest.newBuilder(uri).GET().build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(404, response.statusCode());
-        Assertions.assertEquals("testsuite:1 not found", response.body());
+        Assertions.assertEquals(objectId + " not found", response.body());
         //now test object exists, but missing file
         var fileContents = "data";
-        ocflHttp.writeFileToObject(objectId,
-                new ByteArrayInputStream(fileContents.getBytes(StandardCharsets.UTF_8)),
-                "afile", new VersionInfo(), false);
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+                    updater.writeFile(new ByteArrayInputStream(fileContents.getBytes(StandardCharsets.UTF_8)), fileName);
+                });
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(404, response.statusCode());
-        Assertions.assertEquals("testsuite:1/file1 not found", response.body());
+        Assertions.assertEquals(objectId + "/file1 not found", response.body());
         //now test success
-        uri = URI.create("http://localhost:8000/" + objectId + "/files/afile/content");
+        uri = URI.create("http://localhost:8000/" + encodedObjectId + "/files/" + encodedFileName + "/content");
         request = HttpRequest.newBuilder(uri).GET().build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
         Assertions.assertEquals("bytes", response.headers().firstValue("Accept-Ranges").get());
         Assertions.assertEquals("4", response.headers().firstValue("Content-Length").get());
         Assertions.assertEquals("text/plain", response.headers().firstValue("Content-Type").get());
-        Assertions.assertEquals("attachment; filename=\"afile\"", response.headers().firstValue("Content-Disposition").get());
+        Assertions.assertEquals("attachment; filename*=UTF-8''" + encodedFileName, response.headers().firstValue("Content-Disposition").get());
         var lastModifiedHeader = response.headers().firstValue("Last-Modified").get();
         Assertions.assertTrue(lastModifiedHeader.endsWith(" GMT"));
         var fileETag = "\"77c7ce9a5d86bb386d443bb96390faa120633158699c8844c30b13ab0bf92760b7e4416aea397db91b4ac0e5dd56b8ef7e4b066162ab1fdc088319ce6defc876\"";
@@ -166,9 +254,9 @@ public class OcflHttpTest {
 
         //test with a larger file
         var contents = "abcdefghij".repeat(4000);
-        ocflHttp.writeFileToObject(objectId,
-                new ByteArrayInputStream(contents.getBytes(StandardCharsets.UTF_8)),
-                "biggerfile", new VersionInfo(), false);
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+                updater.writeFile(new ByteArrayInputStream(contents.getBytes(StandardCharsets.UTF_8)),"biggerfile");
+                });
         uri = URI.create("http://localhost:8000/" + objectId + "/files/biggerfile/content");
         request = HttpRequest.newBuilder(uri).GET().build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());

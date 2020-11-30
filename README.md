@@ -8,7 +8,13 @@ API
 - GET /
     - returns {"OCFL ROOT": ...} as JSON
 - GET /<object_id>/files
-    - returns {"files": {"file1": {}}} as JSON
+    - add includeDeleted=1 URL param to request all files, not just currently active ones
+    - add fields=state,size,mimetype,checksum,lastModified URL param to request 1 or more pieces of information about the files
+        - state: "A" for currently active files, "D" for files that have been removed in a later OCFL version
+        - size: # of bytes
+        - checksum: adds "checksum": <sha512 hash> and "checksumType": "SHA-512"
+        - lastModified: UTC timestamp, eg. 2020-11-25T20:30:43.73776Z
+    - returns {"files": {"file1": {"state": "A"}}} as JSON
 - GET /<object_id>/files/<file_name>/content returns file contents
     - use "Range" header to request partial file contents
 - POST /<object_id>/files
