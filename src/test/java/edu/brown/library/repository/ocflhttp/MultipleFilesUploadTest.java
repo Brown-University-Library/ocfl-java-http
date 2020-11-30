@@ -28,7 +28,6 @@ public class MultipleFilesUploadTest {
     String objectId = "testsuite:nâtiôn";
     String encodedObjectId = URLEncoder.encode(objectId, StandardCharsets.UTF_8);
     String file1Name = "nâtiôn.txt";
-    String encodedFile1Name = URLEncoder.encode(file1Name, StandardCharsets.UTF_8);
     String boundary = "AaB03x";
     String contentTypeHeader = "multipart/form-data; boundary=" + boundary;
     String paramsContentDisposition = "Content-Disposition: form-data; name=\"params\"";
@@ -222,6 +221,29 @@ public class MultipleFilesUploadTest {
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(400, response.statusCode());
         Assertions.assertEquals("invalid location - no such file: file:/invalid_uri", response.body());
+    }
+
+    @Test
+    public void testInvalidCharacterInFileName() throws Exception {
+        var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20multiple%20files&userName=someone&userAddress=someone%40school.edu");
+        var file1Contents = "... contents of first file ...";
+        String filename = "b\0.txt";
+        file1ContentDisposition = "Content-Disposition: form-data; name=\"files\"; filename=\"" + filename + "\"";
+        var multipartData = "--" + boundary + "\r\n" +
+                paramsContentDisposition + "\r\n" +
+                "\r\n" +
+                "{}" + "\r\n" +
+                "--" + boundary + "\r\n" +
+                file1ContentDisposition + "\r\n" +
+                "\r\n" +
+                file1Contents + "\r\n" +
+                "--" + boundary + "--";
+        var request = HttpRequest.newBuilder(uri)
+                .header("Content-Type", contentTypeHeader)
+                .POST(HttpRequest.BodyPublishers.ofString(multipartData)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(400, response.statusCode());
+        Assertions.assertEquals("invalid character in filename", response.body());
     }
 
     @Test

@@ -9,6 +9,7 @@ import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.time.OffsetDateTime;
@@ -517,17 +518,22 @@ public class OcflHttp extends AbstractHandler {
             }
         }
         else {
-            if(method.equals("POST")) {
-                try {
+            try {
+                if (method.equals("POST")) {
                     handleObjectFilesPost(request, response, objectId);
-                } catch(Exception e) {logger.severe(e.getMessage()); throw e;}
-            }
-            else {
-                if(method.equals("PUT")) {
-                    try {
+                } else {
+                    if (method.equals("PUT")) {
                         handleObjectFilesPut(request, response, objectId);
-                    } catch(Exception e) {logger.severe(e.getMessage()); throw e;}
+                    }
                 }
+            }
+            catch(InvalidPathException e) {
+                logger.warning(e.toString());
+                setResponseError(response, HttpServletResponse.SC_BAD_REQUEST, "invalid character in filename");
+            }
+            catch(Exception e) {
+                logger.severe(e.toString());
+                throw e;
             }
         }
     }
