@@ -447,7 +447,7 @@ public class OcflHttp extends AbstractHandler {
                 }
                 //now fill in deleted files if needed
                 var includeDeletedParam = request.getParameter(IncludeDeletedParameter);
-                if(includeDeletedParam != null && includeDeletedParam.equals("1")) {
+                if(includeDeletedParam != null && includeDeletedParam.equals("true")) {
                     var allObjectVersions = repo.describeObject(objectId).getVersionMap().values();
                     for(VersionDetails v: allObjectVersions) {
                         //for each version, add information for any file we don't have info for
