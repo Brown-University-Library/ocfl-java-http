@@ -122,17 +122,16 @@ public class OcflHttpTest {
         JsonObject responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
         var filesJson = responseJson.getJsonObject("files");
         Assertions.assertEquals("{}", filesJson.getJsonObject("file1").toString());
-        var objectJson = responseJson.getJsonObject("object");
-        Assertions.assertTrue(objectJson.getString("created").endsWith("Z"));
-        Assertions.assertTrue(objectJson.getString("lastModified").endsWith("Z"));
+        var objectJson = responseJson.getJsonObject(("object"));
+        Assertions.assertNull(objectJson);
     }
 
     @Test
-    public void testGetFilesFields() throws Exception {
+    public void testGetFilesFieldsAndObjectTimestamps() throws Exception {
         ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
             updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)), "file1");
         });
-        var url = "http://localhost:8000/" + encodedObjectId + "/files?fields=state,size";
+        var url = "http://localhost:8000/" + encodedObjectId + "/files?fields=state,size&objectTimestamps=true";
         var request = HttpRequest.newBuilder(URI.create(url)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
@@ -140,6 +139,9 @@ public class OcflHttpTest {
         var filesJson = responseJson.getJsonObject("files");
         Assertions.assertEquals("A", filesJson.getJsonObject("file1").getString("state"));
         Assertions.assertEquals(4, filesJson.getJsonObject("file1").getInt("size"));
+        var objectJson = responseJson.getJsonObject("object");
+        Assertions.assertTrue(objectJson.getString("created").endsWith("Z"));
+        Assertions.assertTrue(objectJson.getString("lastModified").endsWith("Z"));
     }
 
     @Test

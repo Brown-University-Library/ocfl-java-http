@@ -14,6 +14,7 @@ API
         - size: # of bytes
         - checksum: adds "checksum": <sha512 hash> and "checksumType": "SHA-512"
         - lastModified: UTC timestamp, eg. 2020-11-25T20:30:43.73776Z
+    - add objectTimestamps=true URL param to request object created/lastModified timestamps
     - returns {"object": {"created": "2020-11-20T20:30:43.73776Z", "lastModified": "2020-11-25T20:30:43.73776Z"}, files": {"file1": {"state": "A"}}} as JSON
     - returns 410 Gone if object has been deleted (ie. if all files have been removed from latest version)
 - GET /<object_id>/files/<file_name>/content returns file contents
