@@ -94,6 +94,22 @@ public class OcflHttpTest {
     }
 
     @Test
+    public void testGetFilesObjectDeleted() throws Exception {
+        //an object is deleted if all the files have been removed in latest version
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)),"file1");
+        });
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.removeFile("file1");
+        });
+        var url = "http://localhost:8000/" + encodedObjectId + "/files";
+        var request = HttpRequest.newBuilder(URI.create(url)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(410, response.statusCode());
+        Assertions.assertEquals("object " + objectId + " deleted", response.body());
+    }
+
+    @Test
     public void testGetFiles() throws Exception {
         ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
                 updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)),"file1");
@@ -302,5 +318,36 @@ public class OcflHttpTest {
         request = HttpRequest.newBuilder(uri).header("Range", "bytes=39999-40000").GET().build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(416, response.statusCode());
+    }
+
+    @Test
+    public void testGetFileContentObjectDeleted() throws Exception {
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)),"file1");
+        });
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.removeFile("file1");
+        });
+        var url = "http://localhost:8000/" + encodedObjectId + "/files/file1/content";
+        var request = HttpRequest.newBuilder(URI.create(url)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(410, response.statusCode());
+        Assertions.assertEquals("object " + objectId + " deleted", response.body());
+    }
+
+    @Test
+    public void testGetFileContentFileDeleted() throws Exception {
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)),"file1");
+            updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)),"file2");
+        });
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.removeFile("file1");
+        });
+        var url = "http://localhost:8000/" + encodedObjectId + "/files/file1/content";
+        var request = HttpRequest.newBuilder(URI.create(url)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(410, response.statusCode());
+        Assertions.assertEquals("file file1 deleted", response.body());
     }
 }
