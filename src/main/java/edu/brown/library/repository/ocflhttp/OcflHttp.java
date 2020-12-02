@@ -63,6 +63,7 @@ public class OcflHttp extends AbstractHandler {
     public static String IfNoneMatchHeader = "If-None-Match";
     public static String IfModifiedSinceHeader = "If-Modified-Since";
     public static String IncludeDeletedParameter = "includeDeleted";
+    public static String ObjectTimestampsParameter = "objectTimestamps";
     public static String FieldsParameter = "fields";
     public static DateTimeFormatter IfModifiedFormatter = DateTimeFormatter.ofPattern("E, dd LLL uuuu kk:mm:ss O");
     private static final MultipartConfigElement MULTI_PART_CONFIG = new MultipartConfigElement(System.getProperty("java.io.tmpdir"));
@@ -523,16 +524,19 @@ public class OcflHttp extends AbstractHandler {
                         }
                     }
                 }
-                var objectOutput = Json.createObjectBuilder();
-                objectOutput.add("created", repo.getObject(ObjectVersionId.version(objectId, VersionNum.V1)).getCreated().withOffsetSameInstant(ZoneOffset.UTC).format(DateTimeFormatter.ISO_DATE_TIME));
-                objectOutput.add("lastModified", repo.getObject(ObjectVersionId.head(objectId)).getCreated().withOffsetSameInstant(ZoneOffset.UTC).format(DateTimeFormatter.ISO_DATE_TIME));
                 var filesOutput = Json.createObjectBuilder();
                 filesInfoMap.forEach((fileName, jsonInfo) -> {
                     filesOutput.add(fileName, jsonInfo);
                 });
                 var outputBuilder = Json.createObjectBuilder();
-                outputBuilder.add("object", objectOutput);
                 outputBuilder.add("files", filesOutput);
+                var objectTimestampsParam = request.getParameter(ObjectTimestampsParameter);
+                if(objectTimestampsParam != null && objectTimestampsParam.equals("true")) {
+                    var objectOutput = Json.createObjectBuilder();
+                    objectOutput.add("created", repo.getObject(ObjectVersionId.version(objectId, VersionNum.V1)).getCreated().withOffsetSameInstant(ZoneOffset.UTC).format(DateTimeFormatter.ISO_DATE_TIME));
+                    objectOutput.add("lastModified", repo.getObject(ObjectVersionId.head(objectId)).getCreated().withOffsetSameInstant(ZoneOffset.UTC).format(DateTimeFormatter.ISO_DATE_TIME));
+                    outputBuilder.add("object", objectOutput);
+                }
                 var output = outputBuilder.build();
                 response.setStatus(HttpServletResponse.SC_OK);
                 response.addHeader("Accept-Ranges", "bytes");
