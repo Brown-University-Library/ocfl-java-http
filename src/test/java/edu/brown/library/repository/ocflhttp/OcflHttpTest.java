@@ -119,7 +119,12 @@ public class OcflHttpTest {
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
         Assertions.assertEquals("bytes", response.headers().firstValue("Accept-Ranges").get());
-        Assertions.assertEquals("{\"files\":{\"file1\":{}}}", response.body());
+        JsonObject responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
+        var filesJson = responseJson.getJsonObject("files");
+        Assertions.assertEquals("{}", filesJson.getJsonObject("file1").toString());
+        var objectJson = responseJson.getJsonObject("object");
+        Assertions.assertTrue(objectJson.getString("created").endsWith("Z"));
+        Assertions.assertTrue(objectJson.getString("lastModified").endsWith("Z"));
     }
 
     @Test
@@ -153,15 +158,17 @@ public class OcflHttpTest {
         var request = HttpRequest.newBuilder(URI.create(url)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
-        Assertions.assertEquals("{\"files\":{\"file2\":{}}}", response.body());
+        var responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
+        var filesJson = responseJson.getJsonObject("files");
+        Assertions.assertEquals("{}", filesJson.getJsonObject("file2").toString());
 
         //now include deleted files
         url = "http://localhost:8000/" + encodedObjectId + "/files?" + OcflHttp.IncludeDeletedParameter + "=true";
         request = HttpRequest.newBuilder(URI.create(url)).build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
-        JsonObject responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
-        var filesJson = responseJson.getJsonObject("files");
+        responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
+        filesJson = responseJson.getJsonObject("files");
         Assertions.assertTrue(filesJson.containsKey("file1"));
         Assertions.assertTrue(filesJson.containsKey("file2"));
     }
