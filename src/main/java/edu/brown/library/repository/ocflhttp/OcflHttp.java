@@ -523,11 +523,17 @@ public class OcflHttp extends AbstractHandler {
                         }
                     }
                 }
+                var objectOutput = Json.createObjectBuilder();
+                objectOutput.add("created", repo.getObject(ObjectVersionId.version(objectId, VersionNum.V1)).getCreated().withOffsetSameInstant(ZoneOffset.UTC).format(DateTimeFormatter.ISO_DATE_TIME));
+                objectOutput.add("lastModified", repo.getObject(ObjectVersionId.head(objectId)).getCreated().withOffsetSameInstant(ZoneOffset.UTC).format(DateTimeFormatter.ISO_DATE_TIME));
                 var filesOutput = Json.createObjectBuilder();
                 filesInfoMap.forEach((fileName, jsonInfo) -> {
                     filesOutput.add(fileName, jsonInfo);
                 });
-                var output = Json.createObjectBuilder().add("files", filesOutput).build();
+                var outputBuilder = Json.createObjectBuilder();
+                outputBuilder.add("object", objectOutput);
+                outputBuilder.add("files", filesOutput);
+                var output = outputBuilder.build();
                 response.setStatus(HttpServletResponse.SC_OK);
                 response.addHeader("Accept-Ranges", "bytes");
                 var writer = Json.createWriter(response.getWriter());
