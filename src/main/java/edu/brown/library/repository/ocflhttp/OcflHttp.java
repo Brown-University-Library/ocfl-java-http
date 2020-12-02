@@ -376,6 +376,22 @@ public class OcflHttp extends AbstractHandler {
             }
         }
         else {
+            //check for deleted object
+            var activeFiles = repo.describeVersion(ObjectVersionId.head(objectId)).getFiles();
+            if(activeFiles.isEmpty()) {
+                setResponseError(response, HttpServletResponse.SC_GONE, "object " + objectId + " deleted");
+                return;
+            }
+            //check for deleted file
+            var allObjectVersions = repo.describeObject(objectId).getVersionMap().values();
+            for(VersionDetails v: allObjectVersions) {
+                for (FileDetails f : v.getFiles()) {
+                    if (f.getPath().equals(path)) {
+                        setResponseError(response, HttpServletResponse.SC_GONE, "file " + path + " deleted");
+                        return;
+                    }
+                }
+            }
             var msg = objectId + "/" + path + " not found";
             setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
         }
@@ -415,6 +431,10 @@ public class OcflHttp extends AbstractHandler {
                 var filesInfoMap = new HashMap<String, JsonObject>();
                 //add all active files
                 var activeFiles = repo.describeVersion(ObjectVersionId.head(objectId)).getFiles();
+                if(activeFiles.isEmpty()) {
+                    setResponseError(response, HttpServletResponse.SC_GONE, "object " + objectId + " deleted");
+                    return;
+                }
                 for (FileDetails f : activeFiles) {
                     var info = Json.createObjectBuilder();
                     for (String field : fields) {

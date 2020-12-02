@@ -15,8 +15,10 @@ API
         - checksum: adds "checksum": <sha512 hash> and "checksumType": "SHA-512"
         - lastModified: UTC timestamp, eg. 2020-11-25T20:30:43.73776Z
     - returns {"files": {"file1": {"state": "A"}}} as JSON
+    - returns 410 Gone if object has been deleted (ie. if all files have been removed from latest version)
 - GET /<object_id>/files/<file_name>/content returns file contents
     - use "Range" header to request partial file contents
+    - returns 410 Gone if object or file has been deleted
 - POST /<object_id>/files
     - url params: message, userName, userAddress - these get added to OCFL version info
     - body: multipart/form-data
