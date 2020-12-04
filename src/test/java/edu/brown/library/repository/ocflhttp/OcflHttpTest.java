@@ -209,6 +209,21 @@ public class OcflHttpTest {
     }
 
     @Test
+    public void testDeleteObject() throws Exception {
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)), "file1");
+        });
+        var files = ocflHttp.repo.getObject(ObjectVersionId.head(objectId)).getFiles();
+        Assertions.assertFalse(files.isEmpty());
+        var url = "http://localhost:8000/" + encodedObjectId + "/files";
+        var request = HttpRequest.newBuilder(URI.create(url)).DELETE().build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(204, response.statusCode());
+        files = ocflHttp.repo.getObject(ObjectVersionId.head(objectId)).getFiles();
+        Assertions.assertTrue(files.isEmpty());
+    }
+
+    @Test
     public void testGetFileContent() throws Exception {
         //test non-existent object
         var uri = URI.create("http://localhost:8000/" + objectId + "/files/file1/content");

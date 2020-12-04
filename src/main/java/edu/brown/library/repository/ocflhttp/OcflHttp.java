@@ -548,22 +548,30 @@ public class OcflHttp extends AbstractHandler {
             }
         }
         else {
-            try {
-                if (method.equals("POST")) {
-                    handleObjectFilesPost(request, response, objectId);
-                } else {
-                    if (method.equals("PUT")) {
-                        handleObjectFilesPut(request, response, objectId);
+            if(method.equals("DELETE")) {
+                repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+                    repo.getObject(ObjectVersionId.head(objectId)).getFiles().forEach((fileDetails) -> {
+                        updater.removeFile(fileDetails.getPath());
+                    });
+                });
+                response.setStatus(HttpServletResponse.SC_NO_CONTENT);
+            }
+            else {
+                try {
+                    if (method.equals("POST")) {
+                        handleObjectFilesPost(request, response, objectId);
+                    } else {
+                        if (method.equals("PUT")) {
+                            handleObjectFilesPut(request, response, objectId);
+                        }
                     }
+                } catch (InvalidPathException e) {
+                    logger.warning(e.toString());
+                    setResponseError(response, HttpServletResponse.SC_BAD_REQUEST, "invalid character in filename");
+                } catch (Exception e) {
+                    logger.severe(e.toString());
+                    throw e;
                 }
-            }
-            catch(InvalidPathException e) {
-                logger.warning(e.toString());
-                setResponseError(response, HttpServletResponse.SC_BAD_REQUEST, "invalid character in filename");
-            }
-            catch(Exception e) {
-                logger.severe(e.toString());
-                throw e;
             }
         }
     }
