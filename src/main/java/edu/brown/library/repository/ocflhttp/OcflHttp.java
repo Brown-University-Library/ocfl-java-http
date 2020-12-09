@@ -549,12 +549,17 @@ public class OcflHttp extends AbstractHandler {
         }
         else {
             if(method.equals("DELETE")) {
-                repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
-                    repo.getObject(ObjectVersionId.head(objectId)).getFiles().forEach((fileDetails) -> {
-                        updater.removeFile(fileDetails.getPath());
+                if(repo.containsObject(objectId)) {
+                    repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+                        repo.getObject(ObjectVersionId.head(objectId)).getFiles().forEach((fileDetails) -> {
+                            updater.removeFile(fileDetails.getPath());
+                        });
                     });
-                });
-                response.setStatus(HttpServletResponse.SC_NO_CONTENT);
+                    response.setStatus(HttpServletResponse.SC_NO_CONTENT);
+                }
+                else {
+                    setResponseError(response, HttpServletResponse.SC_NOT_FOUND, objectId + " not found");
+                }
             }
             else {
                 try {

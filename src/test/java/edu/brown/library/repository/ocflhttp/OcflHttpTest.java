@@ -224,6 +224,30 @@ public class OcflHttpTest {
     }
 
     @Test
+    public void testDeleteObjectNotFound() throws Exception {
+        var url = "http://localhost:8000/" + encodedObjectId + "/files";
+        var request = HttpRequest.newBuilder(URI.create(url)).DELETE().build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(404, response.statusCode());
+    }
+
+    @Test
+    public void testDeleteObjectAlreadyDeleted() throws Exception {
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)), "file1");
+        });
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.removeFile("file1");
+        });
+        var url = "http://localhost:8000/" + encodedObjectId + "/files";
+        var request = HttpRequest.newBuilder(URI.create(url)).DELETE().build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(204, response.statusCode());
+        var files = ocflHttp.repo.getObject(ObjectVersionId.head(objectId)).getFiles();
+        Assertions.assertTrue(files.isEmpty());
+    }
+
+    @Test
     public void testGetFileContent() throws Exception {
         //test non-existent object
         var uri = URI.create("http://localhost:8000/" + objectId + "/files/file1/content");
