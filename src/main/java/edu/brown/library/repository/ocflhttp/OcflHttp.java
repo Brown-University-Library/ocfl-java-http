@@ -350,6 +350,7 @@ public class OcflHttp extends AbstractHandler {
                     response.addHeader("Last-Modified", lastModifiedHeader);
                     response.addHeader("ETag", "\"" + digestValue + "\"");
                     response.addHeader("Content-Disposition", "attachment; filename*=UTF-8''" + URLEncoder.encode(path, StandardCharsets.UTF_8));
+                    response.addHeader("Content-Length", String.valueOf(fileSize));
                 }
                 try (var stream = file.getStream().enableFixityCheck(false)) {
                     try (var outputStream = response.getOutputStream()) {
