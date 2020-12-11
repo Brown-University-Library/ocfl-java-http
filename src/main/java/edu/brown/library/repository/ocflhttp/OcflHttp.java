@@ -58,6 +58,7 @@ public class OcflHttp extends AbstractHandler {
     final String objectIdRegex = "[-:_. %a-zA-Z0-9]+";
     final String fileNameRegex = "[-:_. %a-zA-Z0-9]+";
     final Pattern ObjectIdFilesPattern = Pattern.compile("^/(" + objectIdRegex + ")/files$");
+    final Pattern ObjectIdPathPattern = Pattern.compile("^/(" + objectIdRegex + ")/files/(" + fileNameRegex + ")$");
     final Pattern ObjectIdPathContentPattern = Pattern.compile("^/(" + objectIdRegex + ")/files/(" + fileNameRegex + ")/content$");
     final long ChunkSize = 1000L;
     public static String IfNoneMatchHeader = "If-None-Match";
@@ -416,6 +417,43 @@ public class OcflHttp extends AbstractHandler {
         }
     }
 
+    void handleObjectPath(HttpServletRequest request,
+                                 HttpServletResponse response,
+                                 String objectId,
+                                 String path)
+            throws IOException
+    {
+        var method = request.getMethod();
+        if(method.equals("DELETE")) {
+            if(repo.containsObject(objectId)) {
+                var versionInfo = getVersionInfo(request);
+                var object = repo.getObject(ObjectVersionId.head(objectId));
+                if (object.containsFile(path)) {
+                    repo.updateObject(ObjectVersionId.head(objectId), versionInfo, updater -> {
+                        updater.removeFile(path);
+                    });
+                    response.setStatus(204);
+                } else {
+                    //see if the file was ever in the object
+                    var allObjectVersions = repo.describeObject(objectId).getVersionMap().values();
+                    for (VersionDetails v : allObjectVersions) {
+                        for (FileDetails f : v.getFiles()) {
+                            if (f.getPath().equals(path)) {
+                                response.setStatus(204);
+                                return;
+                            }
+                        }
+                    }
+                    //file never existed, so return 404
+                    setResponseError(response, HttpServletResponse.SC_NOT_FOUND, path + " not found");
+                }
+            }
+            else {
+                setResponseError(response, HttpServletResponse.SC_NOT_FOUND, objectId + " not found");
+            }
+        }
+    }
+
     void handleObjectFiles(HttpServletRequest request,
                            HttpServletResponse response,
                            String objectId)
@@ -607,7 +645,17 @@ public class OcflHttp extends AbstractHandler {
                     var path = URLDecoder.decode(matcher2.group(2), StandardCharsets.UTF_8.toString());
                     handleObjectPathContent(request, response, objectId, path);
                 } else {
-                    response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                    var matcher3 = ObjectIdPathPattern.matcher(updatedRequestURI);
+                    if(matcher3.matches()) {
+                        try {
+                            var objectId = URLDecoder.decode(matcher3.group(1), StandardCharsets.UTF_8.toString());
+                            var path = URLDecoder.decode(matcher3.group(2), StandardCharsets.UTF_8.toString());
+                            handleObjectPath(request, response, objectId, path);
+                        }
+                        catch(Exception e) {logger.severe(e.toString()); throw e;}
+                    } else {
+                        response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                    }
                 }
             }
         }
