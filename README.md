@@ -17,12 +17,6 @@ API
     - add objectTimestamps=true URL param to request object created/lastModified timestamps
     - returns {"object": {"created": "2020-11-20T20:30:43.73776Z", "lastModified": "2020-11-25T20:30:43.73776Z"}, files": {"file1": {"state": "A"}}} as JSON
     - returns 410 Gone if object has been deleted (ie. if all files have been removed from latest version)
-- DELETE /<object_id>/files
-    - delete object (by removing all the files in a new version - doesn't actually purge any data)
-    - returns 204
-- GET /<object_id>/files/<file_name>/content returns file contents
-    - use "Range" header to request partial file contents
-    - returns 410 Gone if object or file has been deleted
 - POST /<object_id>/files
     - url params: message, userName, userAddress - these get added to OCFL version info
     - body: multipart/form-data
@@ -34,6 +28,15 @@ API
     - body: multipart/form-data (see description in POST section)
     - fails if the object doesn't exist or the files already exist
     - adding the updateExisting=yes URL parameter allows updating existing files
+- DELETE /<object_id>/files
+    - delete object (by removing all the files in a new version - doesn't actually purge any data)
+    - returns 204, if successful (or if object was already delete), 404 if object not found
+- GET /<object_id>/files/<file_name>/content returns file contents
+    - use "Range" header to request partial file contents
+    - returns 410 Gone if object or file has been deleted
+- DELETE /<object_id>/files/<file_name>
+    - delete file <file_name> from object
+    - returns 204 if successful (or if file was already deleted), 404 if <file_name> doesn't exist
 
 Development
 -----------

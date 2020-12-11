@@ -398,4 +398,56 @@ public class OcflHttpTest {
         Assertions.assertEquals(410, response.statusCode());
         Assertions.assertEquals("file file1 deleted", response.body());
     }
+
+    @Test
+    public void testDeleteFile() throws Exception {
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)),"file1");
+        });
+        var url = "http://localhost:8000/" + encodedObjectId + "/files/file1";
+        var request = HttpRequest.newBuilder(URI.create(url)).DELETE().build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(204, response.statusCode());
+        var object = ocflHttp.repo.getObject(ObjectVersionId.head(objectId));
+        var files = object.getFiles();
+        Assertions.assertTrue(files.isEmpty());
+    }
+
+    @Test
+    public void testDeleteFileAlreadyDeleted() throws Exception {
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)),"file1");
+            updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)),"file2");
+        });
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.removeFile("file1");
+        });
+        var url = "http://localhost:8000/" + encodedObjectId + "/files/file1";
+        var request = HttpRequest.newBuilder(URI.create(url)).DELETE().build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(204, response.statusCode());
+        var object = ocflHttp.repo.getObject(ObjectVersionId.head(objectId));
+        var files = object.getFiles();
+        Assertions.assertEquals(1, files.size());
+        Assertions.assertEquals("v2", object.getVersionNum().toString());
+    }
+
+    @Test
+    public void testDeleteFileDoesntExist() throws Exception {
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)),"file1");
+        });
+        var url = "http://localhost:8000/" + encodedObjectId + "/files/zzzzz";
+        var request = HttpRequest.newBuilder(URI.create(url)).DELETE().build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(404, response.statusCode());
+    }
+
+    @Test
+    public void testDeleteFileObjectDoesntExist() throws Exception {
+        var url = "http://localhost:8000/" + encodedObjectId + "/files/zzzzz";
+        var request = HttpRequest.newBuilder(URI.create(url)).DELETE().build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(404, response.statusCode());
+    }
 }
