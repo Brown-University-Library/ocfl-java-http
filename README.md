@@ -30,7 +30,7 @@ API
     - adding the updateExisting=yes URL parameter allows updating existing files
 - DELETE /<object_id>/files
     - delete object (by removing all the files in a new version - doesn't actually purge any data)
-    - returns 204, if successful (or if object was already delete), 404 if object not found
+    - returns 204, if successful (or if object was already deleted), 404 if object doesn't exist
 - GET /<object_id>/files/<file_name>/content returns file contents
     - use "Range" header to request partial file contents
     - returns 410 Gone if object or file has been deleted
