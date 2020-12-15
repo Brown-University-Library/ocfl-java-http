@@ -50,13 +50,17 @@ public class RepoInitTest {
         //create a repo with a different storage layout
         var objectId = "testsuite:1";
         OcflRepository repo = new OcflRepositoryBuilder()
-                .layoutConfig(new HashedTruncatedNTupleConfig()) //instead of HashedTruncatedNTupleIdConfig
+                .defaultLayoutConfig(new HashedTruncatedNTupleConfig()) //instead of HashedTruncatedNTupleIdConfig
                 .storage(FileSystemOcflStorage.builder().repositoryRoot(tmpRoot).build())
                 .workDir(workDir)
                 .build();
         repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
             updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)), "file1.txt");
         });
+        var object = repo.getObject(ObjectVersionId.head(objectId));
+        var file = object.getFile("file1.txt");
+        //make sure repo is using a different storage layout than our default
+        Assertions.assertTrue(file.getStorageRelativePath().startsWith("374/130/ee1/374130ee136fd3704ad495d757a5f6536712eebc81a33abcb3ecd102ec616588"));
         //start up OcflHttp & do a GET
         ocflHttp = new OcflHttp(tmpRoot, workDir);
         server = OcflHttp.getServer(8000, 8, 60);

@@ -1,5 +1,6 @@
 package edu.brown.library.repository.ocflhttp;
 
+import edu.wisc.library.ocfl.api.model.DigestAlgorithm;
 import edu.wisc.library.ocfl.api.model.ObjectVersionId;
 import edu.wisc.library.ocfl.api.model.VersionInfo;
 import org.eclipse.jetty.server.Server;
@@ -171,6 +172,7 @@ public class MultipleFilesUploadTest {
                 .POST(HttpRequest.BodyPublishers.ofString(multipartData)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(409, response.statusCode());
+        Assertions.assertEquals(response.body(), "Expected MD5 digest: a; Actual: 56e51396188e1a46860c409c274f83a4");
 
         //test PUT
         ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
@@ -184,7 +186,7 @@ public class MultipleFilesUploadTest {
                 .header("Content-Type", contentTypeHeader)
                 .PUT(HttpRequest.BodyPublishers.ofString(multipartData)).build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        Assertions.assertEquals("Expected MD5 digest: a; Actual: 56e51396188e1a46860c409c274f83a4", response.body());
+        Assertions.assertEquals(response.body(), "Expected MD5 digest: a; Actual: 56e51396188e1a46860c409c274f83a4");
         Assertions.assertEquals(409, response.statusCode());
     }
 
@@ -321,6 +323,7 @@ public class MultipleFilesUploadTest {
         var file1Contents = "... contents of first file ...";
         var file1Sha512 = "6407d5ecc067dad1a2a3c75d088ecdab97d4df5a580a3bbc1b190ad988cea529b92eab11131fd2f5c0b40fa5891eec979e7e5e96b6bed38e6dddde7a20722345";
         var file2Contents = "content";
+        var file2Sha512 = "b2d1d285b5199c85f988d03649c37e44fd3dde01e5d69c50fef90651962f48110e9340b60d49a479c4c0b53f5f07d690686dd87d2481937a512e8b85ee7c617f";
         var file2Path = Path.of(workDir.toString(), "file2.txt");
         Files.write(file2Path, file2Contents.getBytes(StandardCharsets.UTF_8));
         var file2URI = file2Path.toUri();
@@ -330,7 +333,7 @@ public class MultipleFilesUploadTest {
         var multipartData = "--" + boundary + "\r\n" +
                 paramsContentDisposition + "\r\n" +
                 "\r\n" +
-                "{\"" + file1Name + "\": {\"checksum\": \"" + file1Sha512 + "\", \"checksumType\": \"SHA-512\"}, \"file2.txt\": {\"location\": \"" + encodedFile2URI + "\"}}" + "\r\n" +
+                "{\"" + file1Name + "\": {\"checksum\": \"" + file1Sha512 + "\", \"checksumType\": \"SHA-512\"}, \"file2.txt\": {\"location\": \"" + encodedFile2URI + "\", \"checksum\": \"" + file2Sha512 + "\", \"checksumType\": \"SHA-512\"}}" + "\r\n" +
                 "--" + boundary + "\r\n" +
                 file1ContentDisposition + "\r\n" +
                 "\r\n" +
@@ -344,12 +347,14 @@ public class MultipleFilesUploadTest {
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(201, response.statusCode());
         var object = ocflHttp.repo.getObject(ObjectVersionId.head(objectId));
-        try (var stream = object.getFile(file1Name).getStream()) {
-            Assertions.assertEquals(file1Contents, new String(stream.readAllBytes()));
-        }
         try (var stream = object.getFile("file2.txt").getStream()) {
             Assertions.assertEquals(file2Contents, new String(stream.readAllBytes()));
         }
+        try (var stream = object.getFile(file1Name).getStream()) {
+            Assertions.assertEquals(file1Contents, new String(stream.readAllBytes()));
+        }
+        Assertions.assertEquals(file2Sha512, object.getFile("file2.txt").getFixity().get(DigestAlgorithm.sha512));
+        Assertions.assertEquals(file1Sha512, object.getFile(file1Name).getFixity().get(DigestAlgorithm.sha512));
 
         //now PUT files
         uri = URI.create("http://localhost:8000/" + encodedObjectId + "/files?updateExisting=yes&message=adding%20multiple%20files&userName=someone&userAddress=someone%40school.edu");
