@@ -141,7 +141,7 @@ public class MultipleFilesUploadTest {
                 .header("Content-Type", contentTypeHeader)
                 .PUT(HttpRequest.BodyPublishers.ofString(multipartData)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        Assertions.assertEquals("files [" + file1Name + "] already exist. Add updateExisting=yes parameter to the URL to update them.", response.body());
+        Assertions.assertEquals("files [" + file1Name + "] already exist. Add updateExisting=true parameter to the URL to update them.", response.body());
         Assertions.assertEquals(409, response.statusCode());
         var object = ocflHttp.repo.getObject(ObjectVersionId.head(objectId));
         var files = object.getFiles();
@@ -181,7 +181,7 @@ public class MultipleFilesUploadTest {
         ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
                     updater.writeFile(new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)), "file2.txt");
                 });
-        uri = URI.create("http://localhost:8000/" + objectId + "/files?updateExisting=yes&message=adding%20multiple%20files&username=someone&useraddress=someone%40school.edu");
+        uri = URI.create("http://localhost:8000/" + objectId + "/files?updateExisting=true&message=adding%20multiple%20files&username=someone&useraddress=someone%40school.edu");
         request = HttpRequest.newBuilder(uri)
                 .header("Content-Type", contentTypeHeader)
                 .PUT(HttpRequest.BodyPublishers.ofString(multipartData)).build();
@@ -286,7 +286,7 @@ public class MultipleFilesUploadTest {
         Assertions.assertEquals("someone@school.edu", user.getAddress());
 
         //now put the files
-        uri = URI.create("http://localhost:8000/" + objectId + "/files?updateExisting=yes&message=updating%20multiple%20files&userName=someoneelse&userAddress=someoneelse%40school.edu");
+        uri = URI.create("http://localhost:8000/" + objectId + "/files?updateExisting=true&message=updating%20multiple%20files&userName=someoneelse&userAddress=someoneelse%40school.edu");
         var newMultipartData = "--" + boundary + "\r\n" +
                 paramsContentDisposition + "\r\n" +
                 "\r\n" +
@@ -357,7 +357,7 @@ public class MultipleFilesUploadTest {
         Assertions.assertEquals(file1Sha512, object.getFile(file1Name).getFixity().get(DigestAlgorithm.sha512));
 
         //now PUT files
-        uri = URI.create("http://localhost:8000/" + encodedObjectId + "/files?updateExisting=yes&message=adding%20multiple%20files&userName=someone&userAddress=someone%40school.edu");
+        uri = URI.create("http://localhost:8000/" + encodedObjectId + "/files?updateExisting=true&message=adding%20multiple%20files&userName=someone&userAddress=someone%40school.edu");
         var newFile2Contents = "new file2 contents updated";
         var newFile1Contents = "new first file contents updated";
         Files.write(file2Path, newFile2Contents.getBytes(StandardCharsets.UTF_8));

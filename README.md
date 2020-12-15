@@ -27,7 +27,7 @@ API
     - url params: message, userName, userAddress - these get added to OCFL version info
     - body: multipart/form-data (see description in POST section)
     - fails if the object doesn't exist or the files already exist
-    - adding the updateExisting=yes URL parameter allows updating existing files
+    - adding the updateExisting=true URL parameter allows updating existing files
 - DELETE /<object_id>/files
     - delete object (by removing all the files in a new version - doesn't actually purge any data)
     - returns 204, if successful (or if object was already deleted), 404 if object doesn't exist

@@ -254,8 +254,8 @@ public class OcflHttp extends AbstractHandler {
                     });
                     if (!existingFiles.isEmpty()) {
                         var updateExisting = request.getParameter("updateExisting");
-                        if (updateExisting == null || !updateExisting.equals("yes")) {
-                            var msg = "files " + existingFiles + " already exist. Add updateExisting=yes parameter to the URL to update them.";
+                        if (updateExisting == null || !updateExisting.equals("true")) {
+                            var msg = "files " + existingFiles + " already exist. Add updateExisting=true parameter to the URL to update them.";
                             setResponseError(response, HttpServletResponse.SC_CONFLICT, msg);
                             return;
                         }
