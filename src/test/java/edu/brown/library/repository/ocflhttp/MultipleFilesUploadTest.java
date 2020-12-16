@@ -459,8 +459,11 @@ public class MultipleFilesUploadTest {
         var object = ocflHttp.repo.getObject(ObjectVersionId.head(objectId));
         var files = object.getFiles();
         Assertions.assertEquals(1, files.size());
-        try (var stream = object.getFile("file2.doc").getStream()) {
+        var file2doc = object.getFile("file2.doc");
+        try (var stream = file2doc.getStream()) {
             Assertions.assertEquals("asdf", new String(stream.readAllBytes()));
         }
+        //verify that this new file points to the old file1.txt on disk, since the contents are the same
+        Assertions.assertTrue(file2doc.getStorageRelativePath().endsWith("v1/content/file1.txt"));
     }
 }
