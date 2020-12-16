@@ -25,9 +25,15 @@ API
     - fails if the object already exists
 - PUT /<object_id>/files
     - url params: message, userName, userAddress - these get added to OCFL version info
-    - body: multipart/form-data (see description in POST section)
-    - fails if the object doesn't exist or the files already exist
-    - adding the updateExisting=true URL parameter allows updating existing files
+    - adding/updating files:
+        - body: multipart/form-data (see description in POST section)
+        - fails if the object doesn't exist or the files already exist
+        - adding the updateExisting=true URL parameter allows updating existing files
+    - renaming a file:
+        - body: multipart/form-data
+            - "rename" field - JSON data in the form: {"old": <old_file_name>, "new": <new_file_name>}
+            - other fields/data are ignored
+        - returns 404 if <object_id> or <old_file_name> doesn't currently exist, or 409 if <new_file_name> does currently exist
 - DELETE /<object_id>/files
     - delete object (by removing all the files in a new version - doesn't actually purge any data)
     - returns 204, if successful (or if object was already deleted), 404 if object doesn't exist
