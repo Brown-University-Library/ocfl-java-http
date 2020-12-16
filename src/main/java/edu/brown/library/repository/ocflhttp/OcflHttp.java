@@ -1,8 +1,6 @@
 package edu.brown.library.repository.ocflhttp;
 
-import java.io.InputStream;
-import java.io.BufferedInputStream;
-import java.io.IOException;
+import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLDecoder;
@@ -76,10 +74,7 @@ public class OcflHttp extends AbstractHandler {
     public OcflHttp(Path root, Path workDir) throws Exception {
         repoRoot = root;
         var repoBuilder = new OcflRepositoryBuilder();
-        if (!Files.list(repoRoot).findAny().isPresent()) {
-            //if repoRoot is empty, we'll initialize it with our default config
-            repoBuilder.layoutConfig(new HashedTruncatedNTupleIdConfig());
-        }
+        repoBuilder.defaultLayoutConfig(new HashedTruncatedNTupleIdConfig());
         repo = repoBuilder.storage(FileSystemOcflStorage.builder().repositoryRoot(repoRoot).build())
                 .workDir(workDir)
                 .build();
@@ -197,7 +192,8 @@ public class OcflHttp extends AbstractHandler {
                                     checksumType = "MD5";
                                 }
                             }
-                            files.put(fileName, new FixityCheckInputStream(files.get(fileName), checksumType, checksum));
+                            var inputStream = files.get(fileName);
+                            files.put(fileName, new FixityCheckInputStream(inputStream, checksumType, checksum));
                         }
                     }
                 }
@@ -258,8 +254,8 @@ public class OcflHttp extends AbstractHandler {
                     });
                     if (!existingFiles.isEmpty()) {
                         var updateExisting = request.getParameter("updateExisting");
-                        if (updateExisting == null || !updateExisting.equals("yes")) {
-                            var msg = "files " + existingFiles + " already exist. Add updateExisting=yes parameter to the URL to update them.";
+                        if (updateExisting == null || !updateExisting.equals("true")) {
+                            var msg = "files " + existingFiles + " already exist. Add updateExisting=true parameter to the URL to update them.";
                             setResponseError(response, HttpServletResponse.SC_CONFLICT, msg);
                             return;
                         }
