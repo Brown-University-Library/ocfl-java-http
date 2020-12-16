@@ -30,6 +30,7 @@ import javax.servlet.http.Part;
 
 import edu.wisc.library.ocfl.api.exception.FixityCheckException;
 import edu.wisc.library.ocfl.api.exception.ObjectOutOfSyncException;
+import edu.wisc.library.ocfl.api.exception.OverwriteException;
 import edu.wisc.library.ocfl.api.io.FixityCheckInputStream;
 import edu.wisc.library.ocfl.api.model.*;
 import org.eclipse.jetty.server.Server;
@@ -146,6 +147,22 @@ public class OcflHttp extends AbstractHandler {
         });
     }
 
+    HashMap<String, String> getRenameInfo(HttpServletRequest request) throws IOException, ServletException {
+        for(Part p: request.getParts()) {
+            if(p.getName().equals("rename")) {
+                HashMap<String, String> info = new HashMap<String, String>();
+                JsonReader reader = Json.createReader(p.getInputStream());
+                var renameJson = reader.readObject();
+                var oldPath = renameJson.getString("old");
+                var newPath = renameJson.getString("new");
+                info.put("old", oldPath);
+                info.put("new", newPath);
+                return info;
+            }
+        }
+        return null;
+    }
+
     HashMap<String, InputStream> getFiles(HttpServletRequest request) throws IOException, ServletException, InvalidLocationException {
         var files = new HashMap<String, InputStream>();
         JsonObject params = null;
@@ -241,6 +258,31 @@ public class OcflHttp extends AbstractHandler {
     {
         var versionInfo = getVersionInfo(request);
         try {
+            var renameInfo = getRenameInfo(request);
+            if(renameInfo != null) {
+                var oldPath = renameInfo.get("old");
+                var newPath = renameInfo.get("new");
+                if(repo.containsObject(objectId)) {
+                    var object = repo.getObject(ObjectVersionId.head(objectId));
+                    if (object.containsFile(oldPath)) {
+                        try {
+                            repo.updateObject(ObjectVersionId.head(objectId), versionInfo, updater -> {
+                                updater.renameFile(oldPath, newPath);
+                            });
+                            response.setStatus(HttpServletResponse.SC_NO_CONTENT);
+                        }
+                        catch(OverwriteException e) {
+                            setResponseError(response, HttpServletResponse.SC_CONFLICT, newPath + " already exists");
+                        }
+                    } else {
+                        setResponseError(response, HttpServletResponse.SC_NOT_FOUND, oldPath + " doesn't exist");
+                    }
+                }
+                else {
+                    setResponseError(response, HttpServletResponse.SC_NOT_FOUND, objectId + " doesn't exist");
+                }
+                return;
+            }
             var files = getFiles(request);
             try {
                 if (repo.containsObject(objectId)) {

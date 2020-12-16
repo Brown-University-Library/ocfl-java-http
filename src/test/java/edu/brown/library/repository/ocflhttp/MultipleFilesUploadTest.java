@@ -31,6 +31,7 @@ public class MultipleFilesUploadTest {
     String file1Name = "nâtiôn.txt";
     String boundary = "AaB03x";
     String contentTypeHeader = "multipart/form-data; boundary=" + boundary;
+    String renameContentDisposition = "Content-Disposition: form-data; name=\"rename\"";
     String paramsContentDisposition = "Content-Disposition: form-data; name=\"params\"";
     String file1ContentDisposition = "Content-Disposition: form-data; name=\"files\"; filename=\"" + file1Name + "\"";
     String file2ContentDisposition = "Content-Disposition: form-data; name=\"files\"; filename=\"file2.txt\"";
@@ -381,6 +382,85 @@ public class MultipleFilesUploadTest {
         }
         try (var stream = object.getFile("file2.txt").getStream()) {
             Assertions.assertEquals(newFile2Contents, new String(stream.readAllBytes()));
+        }
+    }
+
+    @Test
+    public void testRenameObjectDoesntExist() throws Exception {
+        var uri = URI.create("http://localhost:8000/" + encodedObjectId + "/files?message=adding%20multiple%20files&userName=someone&userAddress=someone%40school.edu");
+        var multipartData = "--" + boundary + "\r\n" +
+                renameContentDisposition + "\r\n" +
+                "\r\n" +
+                "{\"old\": \"file1.txt\", \"new\": \"file2.doc\"}" + "\r\n" +
+                "--" + boundary + "--";
+        var request = HttpRequest.newBuilder(uri)
+                .header("Content-Type", contentTypeHeader)
+                .PUT(HttpRequest.BodyPublishers.ofString(multipartData)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(objectId + " doesn't exist", response.body());
+        Assertions.assertEquals(404, response.statusCode());
+    }
+
+    @Test
+    public void testRenameFileDoesntExist() throws Exception {
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.writeFile(new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)), "random_file.txt");
+        });
+        var uri = URI.create("http://localhost:8000/" + encodedObjectId + "/files?message=adding%20multiple%20files&userName=someone&userAddress=someone%40school.edu");
+        var multipartData = "--" + boundary + "\r\n" +
+                renameContentDisposition + "\r\n" +
+                "\r\n" +
+                "{\"old\": \"file1.txt\", \"new\": \"file2.doc\"}" + "\r\n" +
+                "--" + boundary + "--";
+        var request = HttpRequest.newBuilder(uri)
+                .header("Content-Type", contentTypeHeader)
+                .PUT(HttpRequest.BodyPublishers.ofString(multipartData)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals("file1.txt doesn't exist", response.body());
+        Assertions.assertEquals(404, response.statusCode());
+    }
+
+    @Test
+    public void testRenameNewFileAlreadyExists() throws Exception {
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.writeFile(new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)), "file1.txt");
+            updater.writeFile(new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)), "file2.doc");
+        });
+        var uri = URI.create("http://localhost:8000/" + encodedObjectId + "/files?message=adding%20multiple%20files&userName=someone&userAddress=someone%40school.edu");
+        var multipartData = "--" + boundary + "\r\n" +
+                renameContentDisposition + "\r\n" +
+                "\r\n" +
+                "{\"old\": \"file1.txt\", \"new\": \"file2.doc\"}" + "\r\n" +
+                "--" + boundary + "--";
+        var request = HttpRequest.newBuilder(uri)
+                .header("Content-Type", contentTypeHeader)
+                .PUT(HttpRequest.BodyPublishers.ofString(multipartData)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals("file2.doc already exists", response.body());
+        Assertions.assertEquals(409, response.statusCode());
+    }
+
+    @Test
+    public void testRename() throws Exception {
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.writeFile(new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)), "file1.txt");
+        });
+        var uri = URI.create("http://localhost:8000/" + encodedObjectId + "/files?message=adding%20multiple%20files&userName=someone&userAddress=someone%40school.edu");
+        var multipartData = "--" + boundary + "\r\n" +
+                renameContentDisposition + "\r\n" +
+                "\r\n" +
+                "{\"old\": \"file1.txt\", \"new\": \"file2.doc\"}" + "\r\n" +
+                "--" + boundary + "--";
+        var request = HttpRequest.newBuilder(uri)
+                .header("Content-Type", contentTypeHeader)
+                .PUT(HttpRequest.BodyPublishers.ofString(multipartData)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(204, response.statusCode());
+        var object = ocflHttp.repo.getObject(ObjectVersionId.head(objectId));
+        var files = object.getFiles();
+        Assertions.assertEquals(1, files.size());
+        try (var stream = object.getFile("file2.doc").getStream()) {
+            Assertions.assertEquals("asdf", new String(stream.readAllBytes()));
         }
     }
 }
