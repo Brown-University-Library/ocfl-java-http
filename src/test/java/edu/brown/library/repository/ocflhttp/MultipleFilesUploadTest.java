@@ -320,6 +320,35 @@ public class MultipleFilesUploadTest {
     }
 
     @Test
+    public void testPostTwoIdenticalFiles() throws Exception {
+        var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20multiple%20files&userName=someone&userAddress=someone%40school.edu");
+        var multipartData = "--" + boundary + "\r\n" +
+                paramsContentDisposition + "\r\n" +
+                "\r\n" +
+                "{}" + "\r\n" +
+                "--" + boundary + "\r\n" +
+                file1ContentDisposition + "\r\n" +
+                "\r\n" +
+                "asdf\r\n" +
+                "--" + boundary + "\r\n" +
+                file2ContentDisposition + "\r\n" +
+                "\r\n" +
+                "asdf\r\n" +
+                "--" + boundary + "--";
+        var request = HttpRequest.newBuilder(uri)
+                .header("Content-Type", contentTypeHeader)
+                .POST(HttpRequest.BodyPublishers.ofString(multipartData)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(201, response.statusCode());
+        var object = ocflHttp.repo.getObject(ObjectVersionId.head(objectId));
+        var files = object.getFiles();
+        Assertions.assertEquals(2, files.size());
+        var file1 = object.getFile(file1Name);
+        var file2 = object.getFile("file2.txt");
+        Assertions.assertEquals(file1.getStorageRelativePath(), file2.getStorageRelativePath());
+    }
+
+    @Test
     public void testLocationMultipleFilesPostAndPut() throws Exception {
         var file1Contents = "... contents of first file ...";
         var file1Sha512 = "6407d5ecc067dad1a2a3c75d088ecdab97d4df5a580a3bbc1b190ad988cea529b92eab11131fd2f5c0b40fa5891eec979e7e5e96b6bed38e6dddde7a20722345";
