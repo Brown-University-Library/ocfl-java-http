@@ -132,11 +132,6 @@ public class OcflHttp extends AbstractHandler {
         return versionInfo;
     }
 
-    Path pathFromEncodedURI(String encodedURI) throws URISyntaxException {
-        var fileURI = new URI(URLDecoder.decode(encodedURI, StandardCharsets.UTF_8));
-        return Path.of(fileURI);
-    }
-
     void closeFilesInputStreams(HashMap<String, InputStream> files) {
         files.forEach((fileName, inputStream) -> {
             try {
@@ -184,18 +179,18 @@ public class OcflHttp extends AbstractHandler {
                 var fileInfo = entry.getValue().asJsonObject();
                 if (fileInfo != null) {
                     if (fileInfo.containsKey("location")) {
-                        var encodedFileURI = fileInfo.getString("location");
-                        if (encodedFileURI != null && !encodedFileURI.isEmpty()) {
+                        var fileURI = fileInfo.getString("location");
+                        if (fileURI != null && !fileURI.isEmpty()) {
                             try {
-                                var path = pathFromEncodedURI(encodedFileURI);
+                                var path = Path.of(new URI(fileURI));
                                 var inputStream = Files.newInputStream(path);
                                 files.put(fileName, inputStream);
                             } catch (URISyntaxException | IllegalArgumentException e) {
                                 logger.warning(e.getMessage());
-                                throw new InvalidLocationException("invalid location: " + encodedFileURI);
+                                throw new InvalidLocationException("invalid location: " + fileURI);
                             } catch (NoSuchFileException e) {
                                 logger.warning(e.getMessage());
-                                throw new InvalidLocationException("invalid location - no such file: " + encodedFileURI);
+                                throw new InvalidLocationException("invalid location - no such file: " + fileURI);
                             }
                         }
                     }
