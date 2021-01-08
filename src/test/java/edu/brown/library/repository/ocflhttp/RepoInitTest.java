@@ -13,7 +13,7 @@ import edu.wisc.library.ocfl.api.OcflRepository;
 import edu.wisc.library.ocfl.api.model.ObjectVersionId;
 import edu.wisc.library.ocfl.api.model.VersionInfo;
 import edu.wisc.library.ocfl.core.OcflRepositoryBuilder;
-import edu.wisc.library.ocfl.core.extension.storage.layout.config.HashedTruncatedNTupleConfig;
+import edu.wisc.library.ocfl.core.extension.storage.layout.config.HashedNTupleLayoutConfig;
 import edu.wisc.library.ocfl.core.storage.filesystem.FileSystemOcflStorage;
 import org.eclipse.jetty.server.Server;
 import org.junit.jupiter.api.AfterEach;
@@ -50,7 +50,7 @@ public class RepoInitTest {
         //create a repo with a different storage layout
         var objectId = "testsuite:1";
         OcflRepository repo = new OcflRepositoryBuilder()
-                .defaultLayoutConfig(new HashedTruncatedNTupleConfig()) //instead of HashedTruncatedNTupleIdConfig
+                .defaultLayoutConfig(new HashedNTupleLayoutConfig()) //instead of HashedNTupleIdEncapsulationLayoutConfig
                 .storage(FileSystemOcflStorage.builder().repositoryRoot(tmpRoot).build())
                 .workDir(workDir)
                 .build();
