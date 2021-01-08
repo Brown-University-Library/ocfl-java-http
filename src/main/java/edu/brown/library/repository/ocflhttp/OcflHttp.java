@@ -40,7 +40,7 @@ import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import edu.wisc.library.ocfl.api.exception.NotFoundException;
 import edu.wisc.library.ocfl.api.OcflRepository;
 import edu.wisc.library.ocfl.core.OcflRepositoryBuilder;
-import edu.wisc.library.ocfl.core.extension.storage.layout.config.HashedTruncatedNTupleIdConfig;
+import edu.wisc.library.ocfl.core.extension.storage.layout.config.HashedNTupleIdEncapsulationLayoutConfig;
 import edu.wisc.library.ocfl.core.storage.filesystem.FileSystemOcflStorage;
 import org.apache.tika.Tika;
 
@@ -75,7 +75,7 @@ public class OcflHttp extends AbstractHandler {
     public OcflHttp(Path root, Path workDir) throws Exception {
         repoRoot = root;
         var repoBuilder = new OcflRepositoryBuilder();
-        repoBuilder.defaultLayoutConfig(new HashedTruncatedNTupleIdConfig());
+        repoBuilder.defaultLayoutConfig(new HashedNTupleIdEncapsulationLayoutConfig());
         repo = repoBuilder.storage(FileSystemOcflStorage.builder().repositoryRoot(repoRoot).build())
                 .workDir(workDir)
                 .build();
