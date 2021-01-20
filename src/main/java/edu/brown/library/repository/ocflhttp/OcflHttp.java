@@ -16,7 +16,6 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.regex.Pattern;
 import java.util.logging.Logger;
 import javax.json.Json;
