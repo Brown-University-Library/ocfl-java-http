@@ -185,8 +185,11 @@ public class OcflHttp extends AbstractHandler {
                                 var path = Path.of(new URI(fileURI));
                                 var inputStream = Files.newInputStream(path);
                                 files.put(fileName, inputStream);
-                            } catch (URISyntaxException | IllegalArgumentException e) {
-                                logger.warning(e.getMessage());
+                            } catch (URISyntaxException e) {
+                                logger.warning("URISyntaxException: " + e.getMessage());
+                                throw new InvalidLocationException("invalid location: " + fileURI);
+                            } catch (IllegalArgumentException e) {
+                                logger.warning("IllegalArgumentException: " + e.getMessage());
                                 throw new InvalidLocationException("invalid location: " + fileURI);
                             } catch (NoSuchFileException e) {
                                 logger.warning(e.getMessage());
