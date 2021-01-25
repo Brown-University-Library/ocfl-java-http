@@ -111,15 +111,15 @@ public class OcflHttp extends AbstractHandler {
         writer.writeObject(output);
     }
 
-    HashMap<String, String> parseUrlParams(String decodedQueryString) {
+    HashMap<String, String> parseUrlParams(String queryString) {
         HashMap<String, String> params = new HashMap<>();
-        var paramParts = decodedQueryString.split("&");
+        var paramParts = queryString.split("&");
         for(String paramPart: paramParts) {
             if(paramPart.contains("=")) {
                 var paramName = paramPart.split("=")[0];
                 var paramValue = paramPart.split("=")[1];
                 if (!params.containsKey(paramName)) {
-                    params.put(paramName, paramValue);
+                    params.put(paramName, URLDecoder.decode(paramValue, StandardCharsets.UTF_8));
                 }
             }
         }
@@ -130,8 +130,7 @@ public class OcflHttp extends AbstractHandler {
         var versionInfo = new VersionInfo();
         var queryString = request.getQueryString();
         if(queryString != null) {
-            var decodedQueryString = URLDecoder.decode(queryString, StandardCharsets.UTF_8);
-            var params = parseUrlParams(decodedQueryString);
+            var params = parseUrlParams(queryString);
             var messageParam = params.get("message");
             if (messageParam != null) {
                 versionInfo.setMessage(messageParam);
