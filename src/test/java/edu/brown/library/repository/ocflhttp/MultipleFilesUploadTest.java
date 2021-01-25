@@ -38,8 +38,8 @@ public class MultipleFilesUploadTest {
 
     @BeforeEach
     private void setup() throws Exception {
-        tmpRoot = Files.createTempDirectory("ocfl-java-http");
-        workDir = Files.createTempDirectory("ocfl-work");
+        tmpRoot = Files.createTempDirectory("ocfl-java-http-tests");
+        workDir = Files.createTempDirectory("ocfl-java-http-tests-work");
         ocflHttp = new OcflHttp(tmpRoot, workDir);
         server = OcflHttp.getServer(8000, 8, 60);
         server.setHandler(ocflHttp);
