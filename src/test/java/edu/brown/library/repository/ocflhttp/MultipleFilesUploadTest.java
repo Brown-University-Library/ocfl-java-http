@@ -286,7 +286,7 @@ public class MultipleFilesUploadTest {
         Assertions.assertEquals("someone@school.edu", user.getAddress());
 
         //now put the files
-        uri = URI.create("http://localhost:8000/" + objectId + "/files?updateExisting=true&message=updating%20multiple%20files&userName=someoneelse&userAddress=someoneelse%40school.edu");
+        uri = URI.create("http://localhost:8000/" + objectId + "/files?updateExisting=true&message=updating%20multiple%20files%20%26%20so%20on&userName=someoneelse&userAddress=someoneelse%40school.edu");
         var newMultipartData = "--" + boundary + "\r\n" +
                 paramsContentDisposition + "\r\n" +
                 "\r\n" +
@@ -312,7 +312,7 @@ public class MultipleFilesUploadTest {
         try (var stream = object.getFile(file1Name).getStream()) {
             Assertions.assertEquals("new first file contents", new String(stream.readAllBytes()));
         }
-        Assertions.assertEquals("updating multiple files", object.getVersionInfo().getMessage());
+        Assertions.assertEquals("updating multiple files & so on", object.getVersionInfo().getMessage());
         user = object.getVersionInfo().getUser();
         Assertions.assertEquals("someoneelse", user.getName());
         Assertions.assertEquals("someoneelse@school.edu", user.getAddress());
