@@ -67,11 +67,16 @@ public class OcflHttp extends AbstractHandler {
     public static DateTimeFormatter IfModifiedFormatter = DateTimeFormatter.ofPattern("E, dd LLL uuuu kk:mm:ss O");
     private static Logger logger = Logger.getLogger("edu.brown.library.repository.ocflhttp");
     private static MultipartConfigElement MULTI_PART_CONFIG;
+    private static int DEFAULT_FILE_SIZE_THRESHOLD = 2500000;
 
     private Path repoRoot;
     OcflRepository repo;
 
     public OcflHttp(Path root, Path workDir) throws Exception {
+        this(root, workDir, DEFAULT_FILE_SIZE_THRESHOLD);
+    }
+
+    public OcflHttp(Path root, Path workDir, int fileSizeThreshold) throws Exception {
         repoRoot = root;
         var repoBuilder = new OcflRepositoryBuilder();
         repoBuilder.defaultLayoutConfig(new HashedNTupleIdEncapsulationLayoutConfig());
@@ -81,7 +86,7 @@ public class OcflHttp extends AbstractHandler {
                 .workDir(ocflJavaWorkDir)
                 .build();
         var jettyWorkDir = workDir.resolve("jetty");
-        MULTI_PART_CONFIG = new MultipartConfigElement(jettyWorkDir.toString(), -1L, -1L, 2500000);
+        MULTI_PART_CONFIG = new MultipartConfigElement(jettyWorkDir.toString(), -1L, -1L, fileSizeThreshold);
     }
 
     void writeFilesToObject(ObjectVersionId objectVersionId, HashMap<String, InputStream> files, VersionInfo versionInfo, boolean overwrite)
@@ -806,6 +811,7 @@ public class OcflHttp extends AbstractHandler {
         var tmp = System.getProperty("java.io.tmpdir");
         var repoRootDir = Path.of(tmp).resolve("ocfl-java-http");
         Path workDir = Path.of(tmp);
+        var fileSizeThreshold = DEFAULT_FILE_SIZE_THRESHOLD;
         if(args.length == 1) {
             var pathToConfigFile = args[0];
             try(InputStream is = Files.newInputStream(Path.of(pathToConfigFile))) {
@@ -819,10 +825,11 @@ public class OcflHttp extends AbstractHandler {
                 if(workDirParam != null) {
                     workDir = Path.of(workDirParam);
                 }
+                fileSizeThreshold = object.getInt("FILE_SIZE_THRESHOLD", DEFAULT_FILE_SIZE_THRESHOLD);
             }
         }
         var server = getServer(port, minThreads, maxThreads);
-        var ocflHttp = new OcflHttp(repoRootDir, workDir);
+        var ocflHttp = new OcflHttp(repoRootDir, workDir, fileSizeThreshold);
         server.setHandler(ocflHttp);
         server.start();
         server.join();
