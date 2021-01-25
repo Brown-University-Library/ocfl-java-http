@@ -111,22 +111,41 @@ public class OcflHttp extends AbstractHandler {
         writer.writeObject(output);
     }
 
+    HashMap<String, String> parseUrlParams(String decodedQueryString) {
+        HashMap<String, String> params = new HashMap<>();
+        var paramParts = decodedQueryString.split("&");
+        for(String paramPart: paramParts) {
+            if(paramPart.contains("=")) {
+                var paramName = paramPart.split("=")[0];
+                var paramValue = paramPart.split("=")[1];
+                if (!params.containsKey(paramName)) {
+                    params.put(paramName, paramValue);
+                }
+            }
+        }
+        return params;
+    }
+
     VersionInfo getVersionInfo(HttpServletRequest request) {
         var versionInfo = new VersionInfo();
-        var params = request.getParameterMap();
-        var messageParam = params.get("message");
-        if(messageParam != null && messageParam.length > 0) {
-            versionInfo.setMessage(messageParam[0]);
-        }
-        var userNameParam = params.get("userName");
-        if(userNameParam != null && userNameParam.length > 0) {
-            var userName = userNameParam[0];
-            var userAddressParam = params.get("userAddress");
-            var userAddress = "";
-            if(userAddressParam != null && userAddressParam.length > 0) {
-                userAddress = userAddressParam[0];
+        var queryString = request.getQueryString();
+        if(queryString != null) {
+            var decodedQueryString = URLDecoder.decode(queryString, StandardCharsets.UTF_8);
+            var params = parseUrlParams(decodedQueryString);
+            var messageParam = params.get("message");
+            if (messageParam != null) {
+                versionInfo.setMessage(messageParam);
             }
-            versionInfo.setUser(userName, userAddress);
+            var userNameParam = params.get("userName");
+            if (userNameParam != null) {
+                var userName = userNameParam;
+                var userAddressParam = params.get("userAddress");
+                var userAddress = "";
+                if (userAddressParam != null) {
+                    userAddress = userAddressParam;
+                }
+                versionInfo.setUser(userName, userAddress);
+            }
         }
         return versionInfo;
     }
@@ -487,6 +506,9 @@ public class OcflHttp extends AbstractHandler {
             else {
                 setResponseError(response, HttpServletResponse.SC_NOT_FOUND, objectId + " not found");
             }
+        }
+        else {
+            setResponseError(response, HttpServletResponse.SC_METHOD_NOT_ALLOWED, "");
         }
     }
 
