@@ -65,7 +65,7 @@ public class OcflHttp extends AbstractHandler {
     public static String ObjectTimestampsParameter = "objectTimestamps";
     public static String FieldsParameter = "fields";
     public static DateTimeFormatter IfModifiedFormatter = DateTimeFormatter.ofPattern("E, dd LLL uuuu kk:mm:ss O");
-    private static final MultipartConfigElement MULTI_PART_CONFIG = new MultipartConfigElement(System.getProperty("java.io.tmpdir"));
+    private static final MultipartConfigElement MULTI_PART_CONFIG = new MultipartConfigElement(System.getProperty("java.io.tmpdir"), -1L, -1L, 2500000);
     private static Logger logger = Logger.getLogger("edu.brown.library.repository.ocflhttp");
 
     private Path repoRoot;
