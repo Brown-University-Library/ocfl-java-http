@@ -65,8 +65,8 @@ public class OcflHttp extends AbstractHandler {
     public static String ObjectTimestampsParameter = "objectTimestamps";
     public static String FieldsParameter = "fields";
     public static DateTimeFormatter IfModifiedFormatter = DateTimeFormatter.ofPattern("E, dd LLL uuuu kk:mm:ss O");
-    private static final MultipartConfigElement MULTI_PART_CONFIG = new MultipartConfigElement(System.getProperty("java.io.tmpdir"), -1L, -1L, 2500000);
     private static Logger logger = Logger.getLogger("edu.brown.library.repository.ocflhttp");
+    private static MultipartConfigElement MULTI_PART_CONFIG;
 
     private Path repoRoot;
     OcflRepository repo;
@@ -75,9 +75,13 @@ public class OcflHttp extends AbstractHandler {
         repoRoot = root;
         var repoBuilder = new OcflRepositoryBuilder();
         repoBuilder.defaultLayoutConfig(new HashedNTupleIdEncapsulationLayoutConfig());
+        var ocflJavaWorkDir = workDir.resolve("ocfl-java");
+        Files.createDirectories(ocflJavaWorkDir);
         repo = repoBuilder.storage(FileSystemOcflStorage.builder().repositoryRoot(repoRoot).build())
-                .workDir(workDir)
+                .workDir(ocflJavaWorkDir)
                 .build();
+        var jettyWorkDir = workDir.resolve("jetty");
+        MULTI_PART_CONFIG = new MultipartConfigElement(jettyWorkDir.toString(), -1L, -1L, 2500000);
     }
 
     void writeFilesToObject(ObjectVersionId objectVersionId, HashMap<String, InputStream> files, VersionInfo versionInfo, boolean overwrite)
@@ -801,6 +805,7 @@ public class OcflHttp extends AbstractHandler {
         var maxThreads = -1;
         var tmp = System.getProperty("java.io.tmpdir");
         var repoRootDir = Path.of(tmp).resolve("ocfl-java-http");
+        Path workDir = Path.of(tmp);
         if(args.length == 1) {
             var pathToConfigFile = args[0];
             try(InputStream is = Files.newInputStream(Path.of(pathToConfigFile))) {
@@ -810,13 +815,14 @@ public class OcflHttp extends AbstractHandler {
                 port = object.getInt("PORT");
                 minThreads = object.getInt("JETTY_MIN_THREADS", -1);
                 maxThreads = object.getInt("JETTY_MAX_THREADS", -1);
+                var workDirParam = object.getString("WORK-DIRECTORY", null);
+                if(workDirParam != null) {
+                    workDir = Path.of(workDirParam);
+                }
             }
         }
         var server = getServer(port, minThreads, maxThreads);
-        var ocflHttp = new OcflHttp(
-                repoRootDir,
-                Files.createTempDirectory("ocfl-work")
-        );
+        var ocflHttp = new OcflHttp(repoRootDir, workDir);
         server.setHandler(ocflHttp);
         server.start();
         server.join();
