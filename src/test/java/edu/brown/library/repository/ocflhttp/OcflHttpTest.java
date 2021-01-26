@@ -369,6 +369,14 @@ public class OcflHttpTest {
     }
 
     @Test
+    public void testGetFileContentWrongMethod() throws Exception {
+        var url = "http://localhost:8000/" + encodedObjectId + "/files/file1/content";
+        var request = HttpRequest.newBuilder(URI.create(url)).POST(HttpRequest.BodyPublishers.ofString("")).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(405, response.statusCode());
+    }
+
+    @Test
     public void testGetFileContentObjectDeleted() throws Exception {
         ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
             updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)),"file1");
@@ -450,6 +458,10 @@ public class OcflHttpTest {
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(404, response.statusCode());
         Assertions.assertEquals("version v5 not found", response.body());
+        //POST should return 405
+        request = HttpRequest.newBuilder(URI.create(url)).POST(HttpRequest.BodyPublishers.ofString("")).build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(405, response.statusCode());
     }
 
     @Test

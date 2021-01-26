@@ -493,6 +493,9 @@ public class OcflHttp extends AbstractHandler {
                 setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
             }
         }
+        else {
+            setResponseError(response, HttpServletResponse.SC_METHOD_NOT_ALLOWED, "");
+        }
     }
 
     void handleObjectVersionPathContent(HttpServletRequest request,
@@ -517,6 +520,9 @@ public class OcflHttp extends AbstractHandler {
                 var msg = objectId + " not found";
                 setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
             }
+        }
+        else {
+            setResponseError(response, HttpServletResponse.SC_METHOD_NOT_ALLOWED, "");
         }
     }
 
