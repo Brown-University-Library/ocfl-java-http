@@ -18,6 +18,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.stream.Stream;
 
 public class MultipleFilesUploadTest {
 
@@ -40,7 +41,7 @@ public class MultipleFilesUploadTest {
     private void setup() throws Exception {
         tmpRoot = Files.createTempDirectory("ocfl-java-http-tests");
         workDir = Files.createTempDirectory("ocfl-java-http-tests-work");
-        ocflHttp = new OcflHttp(tmpRoot, workDir);
+        ocflHttp = new OcflHttp(tmpRoot, workDir, 1000);
         server = OcflHttp.getServer(8000, 8, 60);
         server.setHandler(ocflHttp);
         server.start();
@@ -411,6 +412,38 @@ public class MultipleFilesUploadTest {
         }
         try (var stream = object.getFile("file2.txt").getStream()) {
             Assertions.assertEquals(newFile2Contents, new String(stream.readAllBytes()));
+        }
+    }
+
+    @Test
+    public void testLargerFile() throws Exception {
+        var jettyDir = workDir.resolve("jetty");
+        Files.createDirectories(jettyDir);
+        try (Stream stream = Files.list(jettyDir)) {
+            var numFiles = stream.count();
+            Assertions.assertEquals(0, numFiles);
+        }
+        var file1Contents = "contents ...".repeat(100);
+        var uri = URI.create("http://localhost:8000/" + encodedObjectId + "/files?message=adding%20multiple%20files&userName=someone&userAddress=someone%40school.edu");
+        var multipartData = "--" + boundary + "\r\n" +
+                paramsContentDisposition + "\r\n" +
+                "\r\n" +
+                "{}\r\n" +
+                "--" + boundary + "\r\n" +
+                file1ContentDisposition + "\r\n" +
+                "\r\n" +
+                file1Contents + "\r\n" +
+                "--" + boundary + "--";
+        var request = HttpRequest.newBuilder(uri)
+                .header("Content-Type", contentTypeHeader)
+                .POST(HttpRequest.BodyPublishers.ofString(multipartData)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals("", response.body());
+        Assertions.assertEquals(201, response.statusCode());
+        //the larger file should have been written to disk - make sure it was deleted
+        try (Stream stream = Files.list(jettyDir)) {
+            var numFiles = stream.count();
+            Assertions.assertEquals(0, numFiles);
         }
     }
 

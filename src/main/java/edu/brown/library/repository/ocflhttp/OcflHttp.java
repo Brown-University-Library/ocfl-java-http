@@ -7,7 +7,6 @@ import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.InvalidPathException;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.time.OffsetDateTime;
@@ -21,11 +20,11 @@ import java.util.logging.Logger;
 import javax.json.Json;
 import javax.json.JsonObject;
 import javax.json.JsonReader;
-import javax.servlet.MultipartConfigElement;
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.Part;
+import jakarta.servlet.MultipartConfigElement;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.Part;
 
 import edu.wisc.library.ocfl.api.exception.FixityCheckException;
 import edu.wisc.library.ocfl.api.exception.ObjectOutOfSyncException;
@@ -674,9 +673,15 @@ public class OcflHttp extends AbstractHandler {
                             handleObjectFilesPut(request, response, objectId);
                         }
                     }
-                } catch (InvalidPathException e) {
-                    logger.warning(e.toString());
-                    setResponseError(response, HttpServletResponse.SC_BAD_REQUEST, "invalid character in filename");
+                } catch (IllegalStateException e) {
+                    var exceptionMsg = e.toString();
+                    logger.warning(exceptionMsg);
+                    if(exceptionMsg.contains("Illegal character")) {
+                        setResponseError(response, HttpServletResponse.SC_BAD_REQUEST, "invalid character in filename");
+                    }
+                    else {
+                        throw e;
+                    }
                 } catch (Exception e) {
                     logger.severe(e.toString());
                     throw e;
