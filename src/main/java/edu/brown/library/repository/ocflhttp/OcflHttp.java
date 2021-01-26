@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.text.Normalizer;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -92,10 +93,11 @@ public class OcflHttp extends AbstractHandler {
     {
         repo.updateObject(objectVersionId, versionInfo, updater -> {
                 files.forEach((fileName, inputStream) -> {
+                    var fileNameNFC = Normalizer.normalize(fileName, Normalizer.Form.NFC);
                     if(overwrite) {
-                        updater.writeFile(inputStream, fileName, OVERWRITE);
+                        updater.writeFile(inputStream, fileNameNFC, OVERWRITE);
                     } else {
-                        updater.writeFile(inputStream, fileName);
+                        updater.writeFile(inputStream, fileNameNFC);
                     }
                 });
         });
@@ -708,19 +710,24 @@ public class OcflHttp extends AbstractHandler {
             var matcher = ObjectIdFilesPattern.matcher(updatedRequestURI);
             if (matcher.matches()) {
                 var objectId = URLDecoder.decode(matcher.group(1), StandardCharsets.UTF_8.toString());
+                objectId = Normalizer.normalize(objectId, Normalizer.Form.NFC);
                 handleObjectFiles(request, response, objectId);
             } else {
                 var matcher2 = ObjectIdPathContentPattern.matcher(updatedRequestURI);
                 if (matcher2.matches()) {
                     var objectId = URLDecoder.decode(matcher2.group(1), StandardCharsets.UTF_8.toString());
+                    objectId = Normalizer.normalize(objectId, Normalizer.Form.NFC);
                     var path = URLDecoder.decode(matcher2.group(2), StandardCharsets.UTF_8.toString());
+                    path = Normalizer.normalize(path, Normalizer.Form.NFC);
                     handleObjectPathContent(request, response, objectId, path);
                 } else {
                     var matcher3 = ObjectIdPathPattern.matcher(updatedRequestURI);
                     if(matcher3.matches()) {
                         try {
                             var objectId = URLDecoder.decode(matcher3.group(1), StandardCharsets.UTF_8.toString());
+                            objectId = Normalizer.normalize(objectId, Normalizer.Form.NFC);
                             var path = URLDecoder.decode(matcher3.group(2), StandardCharsets.UTF_8.toString());
+                            path = Normalizer.normalize(path, Normalizer.Form.NFC);
                             handleObjectPath(request, response, objectId, path);
                         }
                         catch(Exception e) {logger.severe(e.toString()); throw e;}
