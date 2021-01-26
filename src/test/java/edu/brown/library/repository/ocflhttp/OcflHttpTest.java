@@ -400,6 +400,59 @@ public class OcflHttpTest {
     }
 
     @Test
+    public void testGetFileContentsFromPreviousVersion() throws Exception {
+        //v1
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.writeFile(new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)), "file1.txt");
+        });
+        //v2
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.writeFile(new ByteArrayInputStream("original data".getBytes(StandardCharsets.UTF_8)), fileName);
+        });
+        //v3
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.removeFile(fileName);
+        });
+        //v4
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.writeFile(new ByteArrayInputStream("updated".getBytes(StandardCharsets.UTF_8)), fileName);
+        });
+        //wrong object id should return 404
+        var url = "http://localhost:8000/random/v1/files/" + encodedFileName + "/content";
+        var request = HttpRequest.newBuilder(URI.create(url)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(404, response.statusCode());
+        //v1 should return 404
+        url = "http://localhost:8000/" + encodedObjectId + "/v1/files/" + encodedFileName + "/content";
+        request = HttpRequest.newBuilder(URI.create(url)).build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(404, response.statusCode());
+        //v2 should return "original data"
+        url = "http://localhost:8000/" + encodedObjectId + "/v2/files/" + encodedFileName + "/content";
+        request = HttpRequest.newBuilder(URI.create(url)).build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(200, response.statusCode());
+        Assertions.assertEquals("original data", response.body());
+        //v3 should return 410 (gone)
+        url = "http://localhost:8000/" + encodedObjectId + "/v3/files/" + encodedFileName + "/content";
+        request = HttpRequest.newBuilder(URI.create(url)).build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(410, response.statusCode());
+        //v4 should return "updated"
+        url = "http://localhost:8000/" + encodedObjectId + "/v4/files/" + encodedFileName + "/content";
+        request = HttpRequest.newBuilder(URI.create(url)).build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(200, response.statusCode());
+        Assertions.assertEquals("updated", response.body());
+        //v5 should return 404
+        url = "http://localhost:8000/" + encodedObjectId + "/v5/files/" + encodedFileName + "/content";
+        request = HttpRequest.newBuilder(URI.create(url)).build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(404, response.statusCode());
+        Assertions.assertEquals("version v5 not found", response.body());
+    }
+
+    @Test
     public void testDeleteFile() throws Exception {
         ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
             updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)),"file1");

@@ -58,6 +58,7 @@ public class OcflHttp extends AbstractHandler {
     final Pattern ObjectIdFilesPattern = Pattern.compile("^/(" + objectIdRegex + ")/files$");
     final Pattern ObjectIdPathPattern = Pattern.compile("^/(" + objectIdRegex + ")/files/(" + fileNameRegex + ")$");
     final Pattern ObjectIdPathContentPattern = Pattern.compile("^/(" + objectIdRegex + ")/files/(" + fileNameRegex + ")/content$");
+    final Pattern ObjectIdVersionPathContentPattern = Pattern.compile("^/(" + objectIdRegex + ")/v([0-9]+)/files/(" + fileNameRegex + ")/content$");
     final long ChunkSize = 1000L;
     public static String IfNoneMatchHeader = "If-None-Match";
     public static String IfModifiedSinceHeader = "If-Modified-Since";
@@ -360,6 +361,17 @@ public class OcflHttp extends AbstractHandler {
                                  String path)
             throws IOException
     {
+        handleObjectPathGetHead(request, response, objectId, object, path, -1);
+    }
+
+    void handleObjectPathGetHead(HttpServletRequest request,
+                                 HttpServletResponse response,
+                                 String objectId,
+                                 OcflObjectVersion object,
+                                 String path,
+                                 int versionNum)
+            throws IOException
+    {
         if(object.containsFile(path)) {
             response.setStatus(HttpServletResponse.SC_OK);
             response.addHeader("Accept-Ranges", "bytes");
@@ -451,10 +463,12 @@ public class OcflHttp extends AbstractHandler {
             //check for deleted file
             var allObjectVersions = repo.describeObject(objectId).getVersionMap().values();
             for(VersionDetails v: allObjectVersions) {
-                for (FileDetails f : v.getFiles()) {
-                    if (f.getPath().equals(path)) {
-                        setResponseError(response, HttpServletResponse.SC_GONE, "file " + path + " deleted");
-                        return;
+                if(versionNum == -1 || (v.getVersionNum().compareTo(VersionNum.fromInt(versionNum)) < 0)) {
+                    for (FileDetails f : v.getFiles()) {
+                        if (f.getPath().equals(path)) {
+                            setResponseError(response, HttpServletResponse.SC_GONE, "file " + path + " deleted");
+                            return;
+                        }
                     }
                 }
             }
@@ -475,6 +489,31 @@ public class OcflHttp extends AbstractHandler {
                 var object = repo.getObject(ObjectVersionId.head(objectId));
                 handleObjectPathGetHead(request, response, objectId, object, path);
             } catch(NotFoundException e) {
+                var msg = objectId + " not found";
+                setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
+            }
+        }
+    }
+
+    void handleObjectVersionPathContent(HttpServletRequest request,
+                                        HttpServletResponse response,
+                                        String objectId,
+                                        String path,
+                                        int versionNum)
+            throws IOException
+    {
+        var method = request.getMethod();
+        if(method.equals("GET") || method.equals("HEAD")) {
+            if(repo.containsObject(objectId)) {
+                try {
+                    var object = repo.getObject(ObjectVersionId.version(objectId, versionNum));
+                    handleObjectPathGetHead(request, response, objectId, object, path, versionNum);
+                } catch(NotFoundException e) {
+                    var msg = "version v" + versionNum + " not found";
+                    setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
+                }
+            }
+            else {
                 var msg = objectId + " not found";
                 setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
             }
@@ -732,7 +771,17 @@ public class OcflHttp extends AbstractHandler {
                         }
                         catch(Exception e) {logger.severe(e.toString()); throw e;}
                     } else {
-                        response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                        var matcher4 = ObjectIdVersionPathContentPattern.matcher(updatedRequestURI);
+                        if(matcher4.matches()) {
+                            var objectId = URLDecoder.decode(matcher4.group(1), StandardCharsets.UTF_8.toString());
+                            objectId = Normalizer.normalize(objectId, Normalizer.Form.NFC);
+                            var versionNum = Integer.parseInt(matcher4.group(2));
+                            var path = URLDecoder.decode(matcher4.group(3), StandardCharsets.UTF_8.toString());
+                            path = Normalizer.normalize(path, Normalizer.Form.NFC);
+                            handleObjectVersionPathContent(request, response, objectId, path, versionNum);
+                        } else{
+                            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                        }
                     }
                 }
             }
