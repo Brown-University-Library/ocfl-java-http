@@ -18,6 +18,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.text.Normalizer;
 import java.util.stream.Stream;
 
 public class MultipleFilesUploadTest {
@@ -28,13 +29,21 @@ public class MultipleFilesUploadTest {
     Path workDir;
     HttpClient client;
     String objectId = "testsuite:nâtiôn";
+    String objectIdNFC = Normalizer.normalize(objectId, Normalizer.Form.NFC);
+    String objectIdNFD = Normalizer.normalize(objectId, Normalizer.Form.NFD);
     String encodedObjectId = URLEncoder.encode(objectId, StandardCharsets.UTF_8);
+    String encodedObjectIdNFC = URLEncoder.encode(objectIdNFC, StandardCharsets.UTF_8);
+    String encodedObjectIdNFD = URLEncoder.encode(objectIdNFD, StandardCharsets.UTF_8);
     String file1Name = "nâtiôn.txt";
+    String file1NameNFC = Normalizer.normalize(file1Name, Normalizer.Form.NFC);
+    String file1NameNFD = Normalizer.normalize(file1Name, Normalizer.Form.NFD);
+    String encodedFile1NameNFC = URLEncoder.encode(file1NameNFC, StandardCharsets.UTF_8);
+    String encodedFile1NameNFD = URLEncoder.encode(file1NameNFD, StandardCharsets.UTF_8);
     String boundary = "AaB03x";
     String contentTypeHeader = "multipart/form-data; boundary=" + boundary;
     String renameContentDisposition = "Content-Disposition: form-data; name=\"rename\"";
     String paramsContentDisposition = "Content-Disposition: form-data; name=\"params\"";
-    String file1ContentDisposition = "Content-Disposition: form-data; name=\"files\"; filename=\"" + file1Name + "\"";
+    String file1ContentDisposition = "Content-Disposition: form-data; name=\"files\"; filename=\"" + file1NameNFC + "\"";
     String file2ContentDisposition = "Content-Disposition: form-data; name=\"files\"; filename=\"file2.txt\"";
 
     @BeforeEach
@@ -346,6 +355,64 @@ public class MultipleFilesUploadTest {
         var file1 = object.getFile(file1Name);
         var file2 = object.getFile("file2.txt");
         Assertions.assertEquals(file1.getStorageRelativePath(), file2.getStorageRelativePath());
+    }
+
+    @Test
+    public void testUnicodeNormalizationNFCInput() throws Exception {
+        var uri = URI.create("http://localhost:8000/" + encodedObjectIdNFC + "/files");
+        var multipartData = "--" + boundary + "\r\n" +
+                paramsContentDisposition + "\r\n" +
+                "\r\n" +
+                "{}" + "\r\n" +
+                "--" + boundary + "\r\n" +
+                file1ContentDisposition + "\r\n" +
+                "\r\n" +
+                "asdf\r\n" +
+                "--" + boundary + "--";
+        var request = HttpRequest.newBuilder(uri)
+                .header("Content-Type", contentTypeHeader)
+                .POST(HttpRequest.BodyPublishers.ofString(multipartData)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(201, response.statusCode());
+        uri = URI.create("http://localhost:8000/" + encodedObjectIdNFC + "/files/" + encodedFile1NameNFC + "/content");
+        request = HttpRequest.newBuilder(uri).GET().build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(200, response.statusCode());
+        Assertions.assertEquals("asdf", response.body());
+        uri = URI.create("http://localhost:8000/" + encodedObjectId + "/files/" + encodedFile1NameNFD + "/content");
+        request = HttpRequest.newBuilder(uri).GET().build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(200, response.statusCode());
+        Assertions.assertEquals("asdf", response.body());
+        uri = URI.create("http://localhost:8000/" + encodedObjectIdNFD + "/files/" + encodedFile1NameNFD + "/content");
+        request = HttpRequest.newBuilder(uri).GET().build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(200, response.statusCode());
+        Assertions.assertEquals("asdf", response.body());
+    }
+
+    @Test
+    public void testUnicodeNormalizationNFDInput() throws Exception {
+        var uri = URI.create("http://localhost:8000/" + encodedObjectIdNFD + "/files");
+        var multipartData = "--" + boundary + "\r\n" +
+                paramsContentDisposition + "\r\n" +
+                "\r\n" +
+                "{}" + "\r\n" +
+                "--" + boundary + "\r\n" +
+                "Content-Disposition: form-data; name=\"files\"; filename=\"" + file1NameNFD + "\"\r\n" +
+                "\r\n" +
+                "asdf\r\n" +
+                "--" + boundary + "--";
+        var request = HttpRequest.newBuilder(uri)
+                .header("Content-Type", contentTypeHeader)
+                .POST(HttpRequest.BodyPublishers.ofString(multipartData)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(201, response.statusCode());
+        uri = URI.create("http://localhost:8000/" + encodedObjectIdNFC + "/files/" + encodedFile1NameNFC + "/content");
+        request = HttpRequest.newBuilder(uri).GET().build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(200, response.statusCode());
+        Assertions.assertEquals("asdf", response.body());
     }
 
     @Test
