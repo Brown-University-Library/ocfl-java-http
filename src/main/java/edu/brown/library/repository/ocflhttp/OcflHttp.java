@@ -56,6 +56,7 @@ public class OcflHttp extends AbstractHandler {
 
     final String objectIdRegex = "[-:_. %a-zA-Z0-9]+";
     final String fileNameRegex = "[-:_. %a-zA-Z0-9]+";
+    final Pattern ObjectIdVersionsPattern = Pattern.compile("^/(" + objectIdRegex + ")/versions$");
     final Pattern ObjectIdFilesPattern = Pattern.compile("^/(" + objectIdRegex + ")/files$");
     final Pattern ObjectIdVersionFilesPattern = Pattern.compile("^/(" + objectIdRegex + ")/v([0-9]+)/files$");
     final Pattern ObjectIdPathPattern = Pattern.compile("^/(" + objectIdRegex + ")/files/(" + fileNameRegex + ")$");
@@ -122,6 +123,29 @@ public class OcflHttp extends AbstractHandler {
         var output = getRootOutput();
         var writer = Json.createWriter(response.getWriter());
         writer.writeObject(output);
+    }
+
+    void handleObjectVersions(HttpServletRequest request, HttpServletResponse response, String objectId) throws IOException {
+        var method = request.getMethod();
+        if(method.equals("GET")) {
+            if (repo.containsObject(objectId)) {
+                var versions = repo.describeObject(objectId).getVersionMap();
+                var output = Json.createObjectBuilder();
+                versions.forEach((versionNum, versionDetails) -> {
+                    var versionOutput = Json.createObjectBuilder();
+                    var created = versionDetails.getCreated().withOffsetSameInstant(ZoneOffset.UTC);
+                    versionOutput.add("created", created.format(DateTimeFormatter.ISO_DATE_TIME));
+                    output.add(versionNum.toString(), versionOutput.build());
+                });
+                var writer = Json.createWriter(response.getWriter());
+                writer.writeObject(output.build());
+            } else {
+                setResponseError(response, HttpServletResponse.SC_NOT_FOUND, objectId + " not found");
+            }
+        }
+        else {
+            setResponseError(response, HttpServletResponse.SC_METHOD_NOT_ALLOWED, "");
+        }
     }
 
     HashMap<String, String> parseUrlParams(String queryString) {
@@ -822,7 +846,14 @@ public class OcflHttp extends AbstractHandler {
                                 var versionNum = Integer.parseInt(matcher5.group(2));
                                 handleObjectFiles(request, response, objectId, versionNum);
                             } else {
-                                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                                var versionsMatcher = ObjectIdVersionsPattern.matcher(updatedRequestURI);
+                                if(versionsMatcher.matches()) {
+                                    var objectId = URLDecoder.decode(versionsMatcher.group(1), StandardCharsets.UTF_8.toString());
+                                    objectId = Normalizer.normalize(objectId, Normalizer.Form.NFC);
+                                    handleObjectVersions(request, response, objectId);
+                                } else {
+                                    response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                                }
                             }
                         }
                     }

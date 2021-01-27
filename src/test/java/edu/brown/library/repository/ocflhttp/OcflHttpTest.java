@@ -84,6 +84,40 @@ public class OcflHttpTest {
     }
 
     @Test
+    public void testVersionsObjectNotFound() throws Exception {
+        var url = "http://localhost:8000/testsuite:notfound/versions";
+        var request = HttpRequest.newBuilder(URI.create(url)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals("testsuite:notfound not found", response.body());
+        Assertions.assertEquals(404, response.statusCode());
+    }
+
+    @Test
+    public void testVersionsWrongMethod() throws Exception {
+        var url = "http://localhost:8000/testsuite:notfound/versions";
+        var request = HttpRequest.newBuilder(URI.create(url)).POST(HttpRequest.BodyPublishers.ofString("")).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(405, response.statusCode());
+    }
+
+    @Test
+    public void testVersions() throws Exception {
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)),"file1");
+        });
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.removeFile("file1");
+        });
+        var url = "http://localhost:8000/" + encodedObjectId + "/versions";
+        var request = HttpRequest.newBuilder(URI.create(url)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(200, response.statusCode());
+        JsonObject responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
+        Assertions.assertTrue(responseJson.getJsonObject("v1").getString("created").endsWith("Z"));
+        Assertions.assertTrue(responseJson.getJsonObject("v2").getString("created").endsWith("Z"));
+    }
+
+    @Test
     public void testGetFilesObjectNotFound() throws Exception {
         //now test object that doesn't exist
         var url = "http://localhost:8000/testsuite:notfound/files";
