@@ -43,9 +43,14 @@ API
 - DELETE /<object_id>/files/<file_name>
     - delete file <file_name> from object
     - returns 204 if successful (or if file was already deleted), 404 if <file_name> doesn't exist
+- GET /<object_id>/vN/files
+    - retrieve list of files (like /<object_id>/files, but for a specific version)
+    - can request fields (like /<object_id>/files)
+    - includeDeleted param is not allowed - this only queries the active files in a specific version
+    - returns 404 if the object or version doesn't exist
 - GET /<object_id>/vN/files/<file_name>/content
     - retrieve contents of file at version N
-    - return 404 if no object, no version, or no file; return 410 if file existed in a previous version but not in vN
+    - return 404 if no object, no version, or no file in vN
 
 Development
 -----------

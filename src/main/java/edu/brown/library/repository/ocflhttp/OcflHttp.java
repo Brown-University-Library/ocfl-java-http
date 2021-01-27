@@ -15,6 +15,7 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.regex.Pattern;
 import java.util.logging.Logger;
@@ -56,6 +57,7 @@ public class OcflHttp extends AbstractHandler {
     final String objectIdRegex = "[-:_. %a-zA-Z0-9]+";
     final String fileNameRegex = "[-:_. %a-zA-Z0-9]+";
     final Pattern ObjectIdFilesPattern = Pattern.compile("^/(" + objectIdRegex + ")/files$");
+    final Pattern ObjectIdVersionFilesPattern = Pattern.compile("^/(" + objectIdRegex + ")/v([0-9]+)/files$");
     final Pattern ObjectIdPathPattern = Pattern.compile("^/(" + objectIdRegex + ")/files/(" + fileNameRegex + ")$");
     final Pattern ObjectIdPathContentPattern = Pattern.compile("^/(" + objectIdRegex + ")/files/(" + fileNameRegex + ")/content$");
     final Pattern ObjectIdVersionPathContentPattern = Pattern.compile("^/(" + objectIdRegex + ")/v([0-9]+)/files/(" + fileNameRegex + ")/content$");
@@ -463,7 +465,7 @@ public class OcflHttp extends AbstractHandler {
             //check for deleted file
             var allObjectVersions = repo.describeObject(objectId).getVersionMap().values();
             for(VersionDetails v: allObjectVersions) {
-                if(versionNum == -1 || (v.getVersionNum().compareTo(VersionNum.fromInt(versionNum)) < 0)) {
+                if(versionNum == -1) {
                     for (FileDetails f : v.getFiles()) {
                         if (f.getPath().equals(path)) {
                             setResponseError(response, HttpServletResponse.SC_GONE, "file " + path + " deleted");
@@ -568,7 +570,16 @@ public class OcflHttp extends AbstractHandler {
 
     void handleObjectFiles(HttpServletRequest request,
                            HttpServletResponse response,
-                           String objectId)
+                           String objeectId)
+        throws IOException, ServletException
+    {
+        handleObjectFiles(request, response, objeectId, -1);
+    }
+
+    void handleObjectFiles(HttpServletRequest request,
+                           HttpServletResponse response,
+                           String objectId,
+                           int versionNum)
         throws IOException, ServletException
     {
         var method = request.getMethod();
@@ -581,7 +592,18 @@ public class OcflHttp extends AbstractHandler {
                 var fields = fieldsParam.split(",");
                 var filesInfoMap = new HashMap<String, JsonObject>();
                 //add all active files
-                var activeFiles = repo.describeVersion(ObjectVersionId.head(objectId)).getFiles();
+                Collection<FileDetails> activeFiles = null;
+                if(versionNum == -1) {
+                    activeFiles = repo.describeVersion(ObjectVersionId.head(objectId)).getFiles();
+                }
+                else {
+                    try {
+                        activeFiles = repo.describeVersion(ObjectVersionId.version(objectId, versionNum)).getFiles();
+                    } catch(NotFoundException e) {
+                        setResponseError(response, HttpServletResponse.SC_NOT_FOUND, "");
+                        return;
+                    }
+                }
                 if(activeFiles.isEmpty()) {
                     setResponseError(response, HttpServletResponse.SC_GONE, "object " + objectId + " deleted");
                     return;
@@ -616,60 +638,62 @@ public class OcflHttp extends AbstractHandler {
                     }
                     filesInfoMap.put(f.getPath(), info.build());
                 }
-                //now fill in deleted files if needed
-                var includeDeletedParam = request.getParameter(IncludeDeletedParameter);
-                if(includeDeletedParam != null && includeDeletedParam.equals("true")) {
-                    var allObjectVersions = repo.describeObject(objectId).getVersionMap().values();
-                    for(VersionDetails v: allObjectVersions) {
-                        //for each version, add information for any file we don't have info for
-                        // When we're adding the file, we look at the whole file change history as needed, so
-                        // we don't have to worry about the order of the versions in allObjectVersions.
-                        for(FileDetails f: v.getFiles()) {
-                            if(!filesInfoMap.containsKey(f.getPath())) {
-                                var info = Json.createObjectBuilder();
-                                for (String field : fields) {
-                                    switch (field) {
-                                        case "state":
-                                            info.add("state", "D"); //at this stage we're only adding deleted files
-                                            break;
-                                        case "size":
-                                            var fileChanges = repo.fileChangeHistory(objectId, f.getPath());
-                                            var it = fileChanges.getReverseChangeIterator();
-                                            while (it.hasNext()) {
-                                                var change = it.next();
-                                                if (!change.getChangeType().equals(FileChangeType.REMOVE)) {
-                                                    var filePath = repoRoot.resolve(change.getStorageRelativePath());
-                                                    var fileSize = Files.size(filePath);
-                                                    info.add("size", fileSize);
-                                                    break;
+                if(versionNum == -1) {
+                    //now fill in deleted files if needed
+                    var includeDeletedParam = request.getParameter(IncludeDeletedParameter);
+                    if (includeDeletedParam != null && includeDeletedParam.equals("true")) {
+                        var allObjectVersions = repo.describeObject(objectId).getVersionMap().values();
+                        for (VersionDetails v : allObjectVersions) {
+                            //for each version, add information for any file we don't have info for
+                            // When we're adding the file, we look at the whole file change history as needed, so
+                            // we don't have to worry about the order of the versions in allObjectVersions.
+                            for (FileDetails f : v.getFiles()) {
+                                if (!filesInfoMap.containsKey(f.getPath())) {
+                                    var info = Json.createObjectBuilder();
+                                    for (String field : fields) {
+                                        switch (field) {
+                                            case "state":
+                                                info.add("state", "D"); //at this stage we're only adding deleted files
+                                                break;
+                                            case "size":
+                                                var fileChanges = repo.fileChangeHistory(objectId, f.getPath());
+                                                var it = fileChanges.getReverseChangeIterator();
+                                                while (it.hasNext()) {
+                                                    var change = it.next();
+                                                    if (!change.getChangeType().equals(FileChangeType.REMOVE)) {
+                                                        var filePath = repoRoot.resolve(change.getStorageRelativePath());
+                                                        var fileSize = Files.size(filePath);
+                                                        info.add("size", fileSize);
+                                                        break;
+                                                    }
                                                 }
-                                            }
-                                            break;
-                                        case "mimetype":
-                                            try(InputStream is = Files.newInputStream(repoRoot.resolve(f.getStorageRelativePath()))) {
-                                                var mimetype = getContentType(is, f.getPath());
-                                                info.add("mimetype", mimetype);
-                                            }
-                                            break;
-                                        case "checksum":
-                                            fileChanges = repo.fileChangeHistory(objectId, f.getPath());
-                                            it = fileChanges.getReverseChangeIterator();
-                                            while (it.hasNext()) {
-                                                var change = it.next();
-                                                if(!change.getChangeType().equals(FileChangeType.REMOVE)) {
-                                                    info.add("checksum", change.getFixity().get(DigestAlgorithm.sha512));
-                                                    info.add("checksumType", "SHA-512");
-                                                    break;
+                                                break;
+                                            case "mimetype":
+                                                try (InputStream is = Files.newInputStream(repoRoot.resolve(f.getStorageRelativePath()))) {
+                                                    var mimetype = getContentType(is, f.getPath());
+                                                    info.add("mimetype", mimetype);
                                                 }
-                                            }
-                                            break;
-                                        case "lastModified":
-                                            var lastModifiedUTC = getFileLastModifiedUTC(objectId, f.getPath());
-                                            info.add("lastModified", lastModifiedUTC.format(DateTimeFormatter.ISO_DATE_TIME));
-                                            break;
+                                                break;
+                                            case "checksum":
+                                                fileChanges = repo.fileChangeHistory(objectId, f.getPath());
+                                                it = fileChanges.getReverseChangeIterator();
+                                                while (it.hasNext()) {
+                                                    var change = it.next();
+                                                    if (!change.getChangeType().equals(FileChangeType.REMOVE)) {
+                                                        info.add("checksum", change.getFixity().get(DigestAlgorithm.sha512));
+                                                        info.add("checksumType", "SHA-512");
+                                                        break;
+                                                    }
+                                                }
+                                                break;
+                                            case "lastModified":
+                                                var lastModifiedUTC = getFileLastModifiedUTC(objectId, f.getPath());
+                                                info.add("lastModified", lastModifiedUTC.format(DateTimeFormatter.ISO_DATE_TIME));
+                                                break;
+                                        }
                                     }
+                                    filesInfoMap.put(f.getPath(), info.build());
                                 }
-                                filesInfoMap.put(f.getPath(), info.build());
                             }
                         }
                     }
@@ -785,8 +809,16 @@ public class OcflHttp extends AbstractHandler {
                             var path = URLDecoder.decode(matcher4.group(3), StandardCharsets.UTF_8.toString());
                             path = Normalizer.normalize(path, Normalizer.Form.NFC);
                             handleObjectVersionPathContent(request, response, objectId, path, versionNum);
-                        } else{
-                            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                        } else {
+                            var matcher5 = ObjectIdVersionFilesPattern.matcher(updatedRequestURI);
+                            if(matcher5.matches()) {
+                                var objectId = URLDecoder.decode(matcher5.group(1), StandardCharsets.UTF_8.toString());
+                                objectId = Normalizer.normalize(objectId, Normalizer.Form.NFC);
+                                var versionNum = Integer.parseInt(matcher5.group(2));
+                                handleObjectFiles(request, response, objectId, versionNum);
+                            } else {
+                                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                            }
                         }
                     }
                 }

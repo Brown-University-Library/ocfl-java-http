@@ -127,6 +127,45 @@ public class OcflHttpTest {
     }
 
     @Test
+    public void testGetVersionFilesNoObject() throws Exception {
+        var url = "http://localhost:8000/" + encodedObjectId + "/v1/files";
+        var request = HttpRequest.newBuilder(URI.create(url)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(404, response.statusCode());
+    }
+
+    @Test
+    public void testGetVersionFiles() throws Exception {
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)),"file1");
+            updater.writeFile(new ByteArrayInputStream("file2 data".getBytes(StandardCharsets.UTF_8)),"file2");
+        });
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+                    updater.removeFile("file1");
+        });
+        var url = "http://localhost:8000/" + encodedObjectId + "/v1/files";
+        var request = HttpRequest.newBuilder(URI.create(url)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(200, response.statusCode());
+        JsonObject responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
+        var filesJson = responseJson.getJsonObject("files");
+        Assertions.assertEquals("{}", filesJson.getJsonObject("file1").toString());
+        Assertions.assertEquals("{}", filesJson.getJsonObject("file2").toString());
+        url = "http://localhost:8000/" + encodedObjectId + "/v2/files";
+        request = HttpRequest.newBuilder(URI.create(url)).build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(200, response.statusCode());
+        responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
+        filesJson = responseJson.getJsonObject("files");
+        Assertions.assertEquals("{}", filesJson.getJsonObject("file2").toString());
+        Assertions.assertNull(filesJson.getJsonObject("file1"));
+        url = "http://localhost:8000/" + encodedObjectId + "/v3/files";
+        request = HttpRequest.newBuilder(URI.create(url)).build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(404, response.statusCode());
+    }
+
+    @Test
     public void testGetFilesFieldsAndObjectTimestamps() throws Exception {
         ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
             updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)), "file1");
@@ -142,6 +181,27 @@ public class OcflHttpTest {
         var objectJson = responseJson.getJsonObject("object");
         Assertions.assertTrue(objectJson.getString("created").endsWith("Z"));
         Assertions.assertTrue(objectJson.getString("lastModified").endsWith("Z"));
+    }
+
+    @Test
+    public void testGetVersionFilesFields() throws Exception {
+        var file2Sha512 = "8fe4e3693f1e8090f279a969eec378086334b32b7457bfe1d16e6a3daa7ce60c26cc2e69c03af3d8b2b266844bf47f8ff7e0d6c70e1b90b6647f45dfc3c5f1ce";
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)),"file1");
+            updater.writeFile(new ByteArrayInputStream("file2 data".getBytes(StandardCharsets.UTF_8)),"file2");
+        });
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.removeFile("file1");
+        });
+        var url = "http://localhost:8000/" + encodedObjectId + "/v1/files?fields=state,size,checksum,lastModified";
+        var request = HttpRequest.newBuilder(URI.create(url)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(200, response.statusCode());
+        JsonObject responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
+        var filesJson = responseJson.getJsonObject("files");
+        Assertions.assertEquals("A", filesJson.getJsonObject("file1").getString("state"));
+        Assertions.assertEquals(10, filesJson.getJsonObject("file2").getInt("size"));
+        Assertions.assertEquals(file2Sha512, filesJson.getJsonObject("file2").getString("checksum"));
     }
 
     @Test
@@ -441,11 +501,11 @@ public class OcflHttpTest {
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
         Assertions.assertEquals("original data", response.body());
-        //v3 should return 410 (gone)
+        //v3 should return 404
         url = "http://localhost:8000/" + encodedObjectId + "/v3/files/" + encodedFileName + "/content";
         request = HttpRequest.newBuilder(URI.create(url)).build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        Assertions.assertEquals(410, response.statusCode());
+        Assertions.assertEquals(404, response.statusCode());
         //v4 should return "updated"
         url = "http://localhost:8000/" + encodedObjectId + "/v4/files/" + encodedFileName + "/content";
         request = HttpRequest.newBuilder(URI.create(url)).build();
