@@ -120,6 +120,7 @@ public class OcflHttpTest {
         Assertions.assertEquals(200, response.statusCode());
         Assertions.assertEquals("bytes", response.headers().firstValue("Accept-Ranges").get());
         JsonObject responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
+        Assertions.assertEquals("v1", responseJson.getString("version"));
         var filesJson = responseJson.getJsonObject("files");
         Assertions.assertEquals("{}", filesJson.getJsonObject("file1").toString());
         var objectJson = responseJson.getJsonObject(("object"));
@@ -148,6 +149,7 @@ public class OcflHttpTest {
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
         JsonObject responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
+        Assertions.assertEquals("v1", responseJson.getString("version"));
         var filesJson = responseJson.getJsonObject("files");
         Assertions.assertEquals("{}", filesJson.getJsonObject("file1").toString());
         Assertions.assertEquals("{}", filesJson.getJsonObject("file2").toString());

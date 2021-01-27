@@ -703,6 +703,11 @@ public class OcflHttp extends AbstractHandler {
                     filesOutput.add(fileName, jsonInfo);
                 });
                 var outputBuilder = Json.createObjectBuilder();
+                if(versionNum == -1) {
+                    outputBuilder.add("version", repo.describeObject(objectId).getHeadVersionNum().toString());
+                } else {
+                    outputBuilder.add("version", "v" + versionNum);
+                }
                 outputBuilder.add("files", filesOutput);
                 var objectTimestampsParam = request.getParameter(ObjectTimestampsParameter);
                 if(objectTimestampsParam != null && objectTimestampsParam.equals("true")) {
