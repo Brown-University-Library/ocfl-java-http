@@ -10,18 +10,17 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.OffsetDateTime;
+import java.util.HashMap;
 
 import edu.wisc.library.ocfl.api.model.ObjectVersionId;
 import edu.wisc.library.ocfl.api.model.VersionInfo;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
+import org.eclipse.jetty.util.ajax.JSON;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
-
-import javax.json.Json;
-import javax.json.JsonObject;
 
 
 public class OcflHttpTest {
@@ -112,9 +111,11 @@ public class OcflHttpTest {
         var request = HttpRequest.newBuilder(URI.create(url)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
-        JsonObject responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
-        Assertions.assertTrue(responseJson.getJsonObject("v1").getString("created").endsWith("Z"));
-        Assertions.assertTrue(responseJson.getJsonObject("v2").getString("created").endsWith("Z"));
+        HashMap<String, Object> responseJson = (HashMap<String, Object>) new JSON().fromJSON(response.body());
+        HashMap<String, String> v1 = (HashMap<String, String>) responseJson.get("v1");
+        HashMap<String, String> v2 = (HashMap<String, String>) responseJson.get("v1");
+        Assertions.assertTrue(v1.get("created").endsWith("Z"));
+        Assertions.assertTrue(v2.get("created").endsWith("Z"));
     }
 
     @Test
@@ -153,12 +154,12 @@ public class OcflHttpTest {
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
         Assertions.assertEquals("bytes", response.headers().firstValue("Accept-Ranges").get());
-        JsonObject responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
-        Assertions.assertEquals("v1", responseJson.getString("version"));
-        var filesJson = responseJson.getJsonObject("files");
-        Assertions.assertEquals("{}", filesJson.getJsonObject("file1").toString());
-        var objectJson = responseJson.getJsonObject(("object"));
-        Assertions.assertNull(objectJson);
+        HashMap<String, Object> responseJson = (HashMap<String, Object>) new JSON().fromJSON(response.body());
+        Assertions.assertEquals("v1", responseJson.get("version"));
+        HashMap<String, Object> filesJson = (HashMap<String, Object>) responseJson.get("files");
+        HashMap<String, String> file1 = (HashMap<String, String>) filesJson.get("file1");
+        Assertions.assertTrue(file1.isEmpty());
+        Assertions.assertNull(responseJson.get("object"));
     }
 
     @Test
@@ -182,19 +183,22 @@ public class OcflHttpTest {
         var request = HttpRequest.newBuilder(URI.create(url)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
-        JsonObject responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
-        Assertions.assertEquals("v1", responseJson.getString("version"));
-        var filesJson = responseJson.getJsonObject("files");
-        Assertions.assertEquals("{}", filesJson.getJsonObject("file1").toString());
-        Assertions.assertEquals("{}", filesJson.getJsonObject("file2").toString());
+        HashMap<String, Object> responseJson = (HashMap<String, Object>) new JSON().fromJSON(response.body());
+        HashMap<String, Object> filesJson = (HashMap<String, Object>) responseJson.get("files");
+        Assertions.assertEquals("v1", responseJson.get("version"));
+        HashMap<String, String> file1 = (HashMap<String, String>) filesJson.get("file1");
+        HashMap<String, String> file2 = (HashMap<String, String>) filesJson.get("file2");
+        Assertions.assertTrue(file1.isEmpty());
+        Assertions.assertTrue(file2.isEmpty());
         url = "http://localhost:8000/" + encodedObjectId + "/v2/files";
         request = HttpRequest.newBuilder(URI.create(url)).build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
-        responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
-        filesJson = responseJson.getJsonObject("files");
-        Assertions.assertEquals("{}", filesJson.getJsonObject("file2").toString());
-        Assertions.assertNull(filesJson.getJsonObject("file1"));
+        responseJson = (HashMap<String, Object>) new JSON().fromJSON(response.body());
+        filesJson = (HashMap<String, Object>) responseJson.get("files");
+        file2 = (HashMap<String, String>) filesJson.get("file2");
+        Assertions.assertTrue(file2.isEmpty());
+        Assertions.assertNull(filesJson.get("file1"));
         url = "http://localhost:8000/" + encodedObjectId + "/v3/files";
         request = HttpRequest.newBuilder(URI.create(url)).build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
@@ -210,13 +214,14 @@ public class OcflHttpTest {
         var request = HttpRequest.newBuilder(URI.create(url)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
-        JsonObject responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
-        var filesJson = responseJson.getJsonObject("files");
-        Assertions.assertEquals("A", filesJson.getJsonObject("file1").getString("state"));
-        Assertions.assertEquals(4, filesJson.getJsonObject("file1").getInt("size"));
-        var objectJson = responseJson.getJsonObject("object");
-        Assertions.assertTrue(objectJson.getString("created").endsWith("Z"));
-        Assertions.assertTrue(objectJson.getString("lastModified").endsWith("Z"));
+        HashMap<String, Object> responseJson = (HashMap<String, Object>) new JSON().fromJSON(response.body());
+        HashMap<String, Object> filesJson = (HashMap<String, Object>) responseJson.get("files");
+        HashMap<String, Object> file1 = (HashMap<String, Object>) filesJson.get("file1");
+        Assertions.assertEquals("A", (String) file1.get("state"));
+        Assertions.assertEquals(4, (long) file1.get("size"));
+        var objectJson = (HashMap<String, String>) responseJson.get("object");
+        Assertions.assertTrue(objectJson.get("created").endsWith("Z"));
+        Assertions.assertTrue(objectJson.get("lastModified").endsWith("Z"));
     }
 
     @Test
@@ -233,11 +238,13 @@ public class OcflHttpTest {
         var request = HttpRequest.newBuilder(URI.create(url)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
-        JsonObject responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
-        var filesJson = responseJson.getJsonObject("files");
-        Assertions.assertEquals("A", filesJson.getJsonObject("file1").getString("state"));
-        Assertions.assertEquals(10, filesJson.getJsonObject("file2").getInt("size"));
-        Assertions.assertEquals(file2Sha512, filesJson.getJsonObject("file2").getString("checksum"));
+        HashMap<String, Object> responseJson = (HashMap<String, Object>) new JSON().fromJSON(response.body());
+        HashMap<String, Object> filesJson = (HashMap<String, Object>) responseJson.get("files");
+        HashMap<String, Object> file1 = (HashMap<String, Object>) filesJson.get("file1");
+        HashMap<String, Object> file2 = (HashMap<String, Object>) filesJson.get("file2");
+        Assertions.assertEquals("A", (String) file1.get("state"));
+        Assertions.assertEquals(10, (long) file2.get("size"));
+        Assertions.assertEquals(file2Sha512, file2.get("checksum"));
     }
 
     @Test
@@ -256,17 +263,18 @@ public class OcflHttpTest {
         var request = HttpRequest.newBuilder(URI.create(url)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
-        var responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
-        var filesJson = responseJson.getJsonObject("files");
-        Assertions.assertEquals("{}", filesJson.getJsonObject("file2").toString());
+        HashMap<String, Object> responseJson = (HashMap<String, Object>) new JSON().fromJSON(response.body());
+        HashMap<String, Object> filesJson = (HashMap<String, Object>) responseJson.get("files");
+        HashMap<String, Object> file2 = (HashMap<String, Object>) filesJson.get("file2");
+        Assertions.assertTrue(file2.isEmpty());
 
         //now include deleted files
         url = "http://localhost:8000/" + encodedObjectId + "/files?" + OcflHttp.IncludeDeletedParameter + "=true";
         request = HttpRequest.newBuilder(URI.create(url)).build();
         response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
-        responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
-        filesJson = responseJson.getJsonObject("files");
+        responseJson = (HashMap<String, Object>) new JSON().fromJSON(response.body());
+        filesJson = (HashMap<String, Object>) responseJson.get("files");
         Assertions.assertTrue(filesJson.containsKey("file1"));
         Assertions.assertTrue(filesJson.containsKey("file2"));
     }
@@ -286,22 +294,24 @@ public class OcflHttpTest {
         var request = HttpRequest.newBuilder(URI.create(url)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
-        JsonObject responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
-        var filesJson = responseJson.getJsonObject("files");
-        Assertions.assertEquals("D", filesJson.getJsonObject("file1").getString("state"));
-        Assertions.assertEquals(4, filesJson.getJsonObject("file1").getInt("size"));
-        Assertions.assertEquals("text/plain", filesJson.getJsonObject("file1").getString("mimetype"));
+        HashMap<String, Object> responseJson = (HashMap<String, Object>) new JSON().fromJSON(response.body());
+        HashMap<String, Object> filesJson = (HashMap<String, Object>) responseJson.get("files");
+        HashMap<String, Object> file1 = (HashMap<String, Object>) filesJson.get("file1");
+        Assertions.assertEquals("D", file1.get("state"));
+        Assertions.assertEquals(4, (long) file1.get("size"));
+        Assertions.assertEquals("text/plain", file1.get("mimetype"));
         Assertions.assertEquals("77c7ce9a5d86bb386d443bb96390faa120633158699c8844c30b13ab0bf92760b7e4416aea397db91b4ac0e5dd56b8ef7e4b066162ab1fdc088319ce6defc876",
-                filesJson.getJsonObject("file1").getString("checksum"));
-        Assertions.assertEquals("SHA-512", filesJson.getJsonObject("file1").getString("checksumType"));
-        Assertions.assertTrue(filesJson.getJsonObject("file1").getString("lastModified").endsWith("Z"));
-        Assertions.assertEquals("A", filesJson.getJsonObject("file2").getString("state"));
-        Assertions.assertEquals(10, filesJson.getJsonObject("file2").getInt("size"));
-        Assertions.assertEquals("text/plain", filesJson.getJsonObject("file2").getString("mimetype"));
+                file1.get("checksum"));
+        Assertions.assertEquals("SHA-512", file1.get("checksumType"));
+        Assertions.assertTrue(((String) file1.get("lastModified")).endsWith("Z"));
+        HashMap<String, Object> file2 = (HashMap<String, Object>) filesJson.get("file2");
+        Assertions.assertEquals("A", file2.get("state"));
+        Assertions.assertEquals(10, (long) file2.get("size"));
+        Assertions.assertEquals("text/plain", file2.get("mimetype"));
         Assertions.assertEquals("8fe4e3693f1e8090f279a969eec378086334b32b7457bfe1d16e6a3daa7ce60c26cc2e69c03af3d8b2b266844bf47f8ff7e0d6c70e1b90b6647f45dfc3c5f1ce",
-                filesJson.getJsonObject("file2").getString("checksum"));
-        Assertions.assertEquals("SHA-512", filesJson.getJsonObject("file2").getString("checksumType"));
-        Assertions.assertTrue(filesJson.getJsonObject("file2").getString("lastModified").endsWith("Z"));
+                file2.get("checksum"));
+        Assertions.assertEquals("SHA-512", file2.get("checksumType"));
+        Assertions.assertTrue(((String)file2.get("lastModified")).endsWith("Z"));
     }
 
     @Test

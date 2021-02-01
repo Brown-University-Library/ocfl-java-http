@@ -17,11 +17,9 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.logging.Logger;
-import javax.json.Json;
-import javax.json.JsonObject;
-import javax.json.JsonReader;
 import jakarta.servlet.MultipartConfigElement;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -37,6 +35,7 @@ import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.AbstractHandler;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
+import org.eclipse.jetty.util.ajax.JSON;
 import edu.wisc.library.ocfl.api.exception.NotFoundException;
 import edu.wisc.library.ocfl.api.OcflRepository;
 import edu.wisc.library.ocfl.core.OcflRepositoryBuilder;
@@ -46,7 +45,7 @@ import org.apache.tika.Tika;
 
 import static edu.wisc.library.ocfl.api.OcflOption.OVERWRITE;
 
-class InvalidLocationException extends Exception {
+class InvalidLocationException extends RuntimeException {
     public InvalidLocationException(String errMessage) {
         super(errMessage);
     }
@@ -113,16 +112,13 @@ public class OcflHttp extends AbstractHandler {
         response.getOutputStream().write(msg.getBytes(StandardCharsets.UTF_8.toString()));
     }
 
-    JsonObject getRootOutput() {
-        return Json.createObjectBuilder().add("OCFL ROOT", repoRoot.toString()).build();
-    }
-
     void handleRoot(HttpServletResponse response) throws IOException {
         response.setContentType("application/json");
         response.setStatus(HttpServletResponse.SC_OK);
-        var output = getRootOutput();
-        var writer = Json.createWriter(response.getWriter());
-        writer.writeObject(output);
+        Map<String, String> output = new HashMap<>();
+        output.put("OCFL ROOT", repoRoot.toString());
+        var json = new JSON().toJSON(output);
+        response.getWriter().write(json);
     }
 
     void handleObjectVersions(HttpServletRequest request, HttpServletResponse response, String objectId) throws IOException {
@@ -130,15 +126,14 @@ public class OcflHttp extends AbstractHandler {
         if(method.equals("GET")) {
             if (repo.containsObject(objectId)) {
                 var versions = repo.describeObject(objectId).getVersionMap();
-                var output = Json.createObjectBuilder();
+                Map<String, Map<String, String>> output = new HashMap<>();
                 versions.forEach((versionNum, versionDetails) -> {
-                    var versionOutput = Json.createObjectBuilder();
+                    Map<String, String> versionOutput = new HashMap<>();
                     var created = versionDetails.getCreated().withOffsetSameInstant(ZoneOffset.UTC);
-                    versionOutput.add("created", created.format(DateTimeFormatter.ISO_DATE_TIME));
-                    output.add(versionNum.toString(), versionOutput.build());
+                    versionOutput.put("created", created.format(DateTimeFormatter.ISO_DATE_TIME));
+                    output.put(versionNum.toString(), versionOutput);
                 });
-                var writer = Json.createWriter(response.getWriter());
-                writer.writeObject(output.build());
+                response.getWriter().write(new JSON().toJSON(output));
             } else {
                 setResponseError(response, HttpServletResponse.SC_NOT_FOUND, objectId + " not found");
             }
@@ -199,11 +194,11 @@ public class OcflHttp extends AbstractHandler {
     HashMap<String, String> getRenameInfo(HttpServletRequest request) throws IOException, ServletException {
         for(Part p: request.getParts()) {
             if(p.getName().equals("rename")) {
-                HashMap<String, String> info = new HashMap<String, String>();
-                JsonReader reader = Json.createReader(p.getInputStream());
-                var renameJson = reader.readObject();
-                var oldPath = renameJson.getString("old");
-                var newPath = renameJson.getString("new");
+                var info = new HashMap<String, String>();
+                @SuppressWarnings("unchecked")
+                Map<String, Object> jsonInfo = (Map<String, Object>) new JSON().fromJSON(new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8));
+                var oldPath = (String) jsonInfo.get("old");
+                var newPath = (String) jsonInfo.get("new");
                 info.put("old", oldPath);
                 info.put("new", newPath);
                 return info;
@@ -212,28 +207,24 @@ public class OcflHttp extends AbstractHandler {
         return null;
     }
 
-    HashMap<String, InputStream> getFiles(HttpServletRequest request) throws IOException, ServletException, InvalidLocationException {
+    HashMap<String, InputStream> getFiles(HttpServletRequest request) throws IOException, ServletException {
         var files = new HashMap<String, InputStream>();
-        JsonObject params = null;
+        Map<String, Object> params = null;
         for(Part p: request.getParts()) {
             if(p.getName().equals("params")) {
-                JsonReader reader = Json.createReader(p.getInputStream());
-                params = reader.readObject();
+                params = (Map<String, Object>) new JSON().fromJSON(new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8));
             }
             else {
                 var fileName = p.getSubmittedFileName();
                 files.put(fileName, p.getInputStream());
             }
         }
-        var entries = params.entrySet().iterator();
         try {
-            while (entries.hasNext()) {
-                var entry = entries.next();
-                var fileName = entry.getKey();
-                var fileInfo = entry.getValue().asJsonObject();
-                if (fileInfo != null) {
+            params.forEach((fileName, fileInfoObject) -> {
+                if (fileInfoObject != null) {
+                    HashMap<String, String> fileInfo = (HashMap<String, String>) fileInfoObject;
                     if (fileInfo.containsKey("location")) {
-                        var fileURI = fileInfo.getString("location");
+                        var fileURI = fileInfo.get("location");
                         if (fileURI != null && !fileURI.isEmpty()) {
                             try {
                                 var path = Path.of(new URI(fileURI));
@@ -248,15 +239,17 @@ public class OcflHttp extends AbstractHandler {
                             } catch (NoSuchFileException e) {
                                 logger.warning(e.getMessage());
                                 throw new InvalidLocationException("invalid location - no such file: " + fileURI);
+                            } catch (IOException e) {
+                                throw new UncheckedIOException(e);
                             }
                         }
                     }
                     if (fileInfo.containsKey("checksum")) {
-                        var checksum = fileInfo.getString("checksum");
+                        var checksum = fileInfo.get("checksum");
                         if (checksum != null && !checksum.isEmpty()) {
                             var checksumType = "MD5";
                             if (fileInfo.containsKey("checksumType")) {
-                                checksumType = fileInfo.getString("checksumType");
+                                checksumType = fileInfo.get("checksumType");
                                 if (checksumType == null || checksumType.isEmpty()) {
                                     checksumType = "MD5";
                                 }
@@ -266,7 +259,7 @@ public class OcflHttp extends AbstractHandler {
                         }
                     }
                 }
-            }
+            });
         }
         catch (Exception e) {
             closeFilesInputStreams(files);
@@ -614,7 +607,7 @@ public class OcflHttp extends AbstractHandler {
                     fieldsParam = "";
                 }
                 var fields = fieldsParam.split(",");
-                var filesInfoMap = new HashMap<String, JsonObject>();
+                var filesInfoMap = new HashMap<String, HashMap<String, Object>>();
                 //add all active files
                 Collection<FileDetails> activeFiles = null;
                 if(versionNum == -1) {
@@ -633,34 +626,34 @@ public class OcflHttp extends AbstractHandler {
                     return;
                 }
                 for (FileDetails f : activeFiles) {
-                    var info = Json.createObjectBuilder();
+                    var info = new HashMap<String, Object>();
                     for (String field : fields) {
                         switch (field) {
                             case "state":
-                                info.add("state", "A");
+                                info.put("state", "A");
                                 break;
                             case "size":
                                 var filePath = repoRoot.resolve(f.getStorageRelativePath());
                                 var fileSize = Files.size(filePath);
-                                info.add("size", fileSize);
+                                info.put("size", fileSize);
                                 break;
                             case "mimetype":
                                 try(InputStream is = repo.getObject(ObjectVersionId.head(objectId)).getFile(f.getPath()).getStream()) {
                                     var mimetype = getContentType(is, f.getPath());
-                                    info.add("mimetype", mimetype);
+                                    info.put("mimetype", mimetype);
                                 }
                                 break;
                             case "checksum":
-                                info.add("checksum", f.getFixity().get(DigestAlgorithm.sha512));
-                                info.add("checksumType", "SHA-512");
+                                info.put("checksum", f.getFixity().get(DigestAlgorithm.sha512));
+                                info.put("checksumType", "SHA-512");
                                 break;
                             case "lastModified":
                                 var lastModifiedUTC = getFileLastModifiedUTC(objectId, f.getPath());
-                                info.add("lastModified", lastModifiedUTC.format(DateTimeFormatter.ISO_DATE_TIME));
+                                info.put("lastModified", lastModifiedUTC.format(DateTimeFormatter.ISO_DATE_TIME));
                                 break;
                         }
                     }
-                    filesInfoMap.put(f.getPath(), info.build());
+                    filesInfoMap.put(f.getPath(), info);
                 }
                 if(versionNum == -1) {
                     //now fill in deleted files if needed
@@ -673,11 +666,11 @@ public class OcflHttp extends AbstractHandler {
                             // we don't have to worry about the order of the versions in allObjectVersions.
                             for (FileDetails f : v.getFiles()) {
                                 if (!filesInfoMap.containsKey(f.getPath())) {
-                                    var info = Json.createObjectBuilder();
+                                    var info = new HashMap<String, Object>();
                                     for (String field : fields) {
                                         switch (field) {
                                             case "state":
-                                                info.add("state", "D"); //at this stage we're only adding deleted files
+                                                info.put("state", "D"); //at this stage we're only adding deleted files
                                                 break;
                                             case "size":
                                                 var fileChanges = repo.fileChangeHistory(objectId, f.getPath());
@@ -687,7 +680,7 @@ public class OcflHttp extends AbstractHandler {
                                                     if (!change.getChangeType().equals(FileChangeType.REMOVE)) {
                                                         var filePath = repoRoot.resolve(change.getStorageRelativePath());
                                                         var fileSize = Files.size(filePath);
-                                                        info.add("size", fileSize);
+                                                        info.put("size", fileSize);
                                                         break;
                                                     }
                                                 }
@@ -695,7 +688,7 @@ public class OcflHttp extends AbstractHandler {
                                             case "mimetype":
                                                 try (InputStream is = Files.newInputStream(repoRoot.resolve(f.getStorageRelativePath()))) {
                                                     var mimetype = getContentType(is, f.getPath());
-                                                    info.add("mimetype", mimetype);
+                                                    info.put("mimetype", mimetype);
                                                 }
                                                 break;
                                             case "checksum":
@@ -704,47 +697,46 @@ public class OcflHttp extends AbstractHandler {
                                                 while (it.hasNext()) {
                                                     var change = it.next();
                                                     if (!change.getChangeType().equals(FileChangeType.REMOVE)) {
-                                                        info.add("checksum", change.getFixity().get(DigestAlgorithm.sha512));
-                                                        info.add("checksumType", "SHA-512");
+                                                        info.put("checksum", change.getFixity().get(DigestAlgorithm.sha512));
+                                                        info.put("checksumType", "SHA-512");
                                                         break;
                                                     }
                                                 }
                                                 break;
                                             case "lastModified":
                                                 var lastModifiedUTC = getFileLastModifiedUTC(objectId, f.getPath());
-                                                info.add("lastModified", lastModifiedUTC.format(DateTimeFormatter.ISO_DATE_TIME));
+                                                info.put("lastModified", lastModifiedUTC.format(DateTimeFormatter.ISO_DATE_TIME));
                                                 break;
                                         }
                                     }
-                                    filesInfoMap.put(f.getPath(), info.build());
+                                    filesInfoMap.put(f.getPath(), info);
                                 }
                             }
                         }
                     }
                 }
-                var filesOutput = Json.createObjectBuilder();
+                var filesOutput = new HashMap<String, Object>();
                 filesInfoMap.forEach((fileName, jsonInfo) -> {
-                    filesOutput.add(fileName, jsonInfo);
+                    filesOutput.put(fileName, jsonInfo);
                 });
-                var outputBuilder = Json.createObjectBuilder();
+                var outputInfo = new HashMap<String, Object>();
                 if(versionNum == -1) {
-                    outputBuilder.add("version", repo.describeObject(objectId).getHeadVersionNum().toString());
+                    outputInfo.put("version", repo.describeObject(objectId).getHeadVersionNum().toString());
                 } else {
-                    outputBuilder.add("version", "v" + versionNum);
+                    outputInfo.put("version", "v" + versionNum);
                 }
-                outputBuilder.add("files", filesOutput);
+                outputInfo.put("files", filesOutput);
                 var objectTimestampsParam = request.getParameter(ObjectTimestampsParameter);
                 if(objectTimestampsParam != null && objectTimestampsParam.equals("true")) {
-                    var objectOutput = Json.createObjectBuilder();
-                    objectOutput.add("created", repo.getObject(ObjectVersionId.version(objectId, VersionNum.V1)).getCreated().withOffsetSameInstant(ZoneOffset.UTC).format(DateTimeFormatter.ISO_DATE_TIME));
-                    objectOutput.add("lastModified", repo.getObject(ObjectVersionId.head(objectId)).getCreated().withOffsetSameInstant(ZoneOffset.UTC).format(DateTimeFormatter.ISO_DATE_TIME));
-                    outputBuilder.add("object", objectOutput);
+                    var objectOutput = new HashMap<String, String>();
+                    objectOutput.put("created", repo.getObject(ObjectVersionId.version(objectId, VersionNum.V1)).getCreated().withOffsetSameInstant(ZoneOffset.UTC).format(DateTimeFormatter.ISO_DATE_TIME));
+                    objectOutput.put("lastModified", repo.getObject(ObjectVersionId.head(objectId)).getCreated().withOffsetSameInstant(ZoneOffset.UTC).format(DateTimeFormatter.ISO_DATE_TIME));
+                    outputInfo.put("object", objectOutput);
                 }
-                var output = outputBuilder.build();
+                var output = new JSON().toJSON(outputInfo);
                 response.setStatus(HttpServletResponse.SC_OK);
                 response.addHeader("Accept-Ranges", "bytes");
-                var writer = Json.createWriter(response.getWriter());
-                writer.writeObject(output);
+                response.getWriter().write(output);
             }
             else {
                 setResponseError(response, HttpServletResponse.SC_NOT_FOUND, objectId + " not found");
@@ -950,17 +942,16 @@ public class OcflHttp extends AbstractHandler {
         if(args.length == 1) {
             var pathToConfigFile = args[0];
             try(InputStream is = Files.newInputStream(Path.of(pathToConfigFile))) {
-                var reader = Json.createReader(is);
-                var object = reader.readObject();
-                repoRootDir = Path.of(object.getString("OCFL-ROOT"));
-                port = object.getInt("PORT");
-                minThreads = object.getInt("JETTY_MIN_THREADS", -1);
-                maxThreads = object.getInt("JETTY_MAX_THREADS", -1);
-                var workDirParam = object.getString("WORK-DIRECTORY", null);
+                HashMap<String, Object> configJson = (HashMap<String, Object>) new JSON().fromJSON(new String(is.readAllBytes(), StandardCharsets.UTF_8));
+                repoRootDir = Path.of((String) configJson.get("OCFL-ROOT"));
+                port = (int) configJson.get("PORT");
+                minThreads = (int) configJson.getOrDefault("JETTY_MIN_THREADS", -1);
+                maxThreads = (int) configJson.getOrDefault("JETTY_MAX_THREADS", -1);
+                var workDirParam = (String) configJson.get("WORK-DIRECTORY");
                 if(workDirParam != null) {
                     workDir = Path.of(workDirParam);
                 }
-                fileSizeThreshold = object.getInt("FILE_SIZE_THRESHOLD", DEFAULT_FILE_SIZE_THRESHOLD);
+                fileSizeThreshold = (int) configJson.getOrDefault("FILE_SIZE_THRESHOLD", DEFAULT_FILE_SIZE_THRESHOLD);
             }
         }
         var server = getServer(port, minThreads, maxThreads);
