@@ -78,8 +78,9 @@ public class OcflHttpTest {
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
         var body = response.body();
-        final var rootDir = tmpRoot.toString().replace("\\", "\\\\");
-        final var expectedStr = "{\"OCFL ROOT\":\"" + rootDir + "\",\"ALLOWED-UPLOAD-DIRS\":[\"" + tmpDir + "\"]}";
+        final var rootDirStr = tmpRoot.toString().replace("\\", "\\\\");
+        final var tmpDirStr = tmpDir.toString().replace("\\", "\\\\");
+        final var expectedStr = "{\"OCFL ROOT\":\"" + rootDirStr + "\",\"ALLOWED-UPLOAD-DIRS\":[\"" + tmpDirStr + "\"]}";
         Assertions.assertEquals(body, expectedStr);
 
         //test unhandled/not found url
