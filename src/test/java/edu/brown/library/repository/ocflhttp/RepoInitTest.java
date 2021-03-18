@@ -117,7 +117,7 @@ public class RepoInitTest {
         //test config file
         var filePath = Path.of(workDir.toString(), "config.json");
         Path userDir = Path.of(System.getProperty("user.dir"));
-        var configJson = "{\"OCFL-ROOT\": \"" + tmp.toString() + "\", \"ALLOWED-UPLOAD-DIRS\": [\"" + tmp.toString() + "\",\"" + userDir.toString() + "\"]}";
+        var configJson = "{\"OCFL-ROOT\": \"" + tmp.toString().replace("\\", "\\\\") + "\", \"ALLOWED-UPLOAD-DIRS\": [\"" + tmp.toString().replace("\\", "\\\\") + "\",\"" + userDir.toString().replace("\\", "\\\\") + "\"]}";
         System.out.println("configJson: " + configJson);
         Files.write(filePath, configJson.getBytes(StandardCharsets.UTF_8));
         String[] args = {filePath.toString()};
