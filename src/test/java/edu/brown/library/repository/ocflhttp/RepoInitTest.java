@@ -116,15 +116,12 @@ public class RepoInitTest {
 
         //test config file
         var filePath = Path.of(workDir.toString(), "config.json");
-        var configJson = "{\"OCFL-ROOT\": \"/tmp\", \"ALLOWED-UPLOAD-DIRS\": [\"/tmp\", \"/var\"]}";
+        Path userDir = Path.of(System.getProperty("user.dir"));
+        var configJson = "{\"OCFL-ROOT\": \"" + tmp.toString() + "\", \"ALLOWED-UPLOAD-DIRS\": [\"" + tmp.toString() + "\",\"" + userDir.toString() + "\"]}";
         Files.write(filePath, configJson.getBytes(StandardCharsets.UTF_8));
         String[] args = {filePath.toString()};
         config = new OcflHttpConfig(args);
-        ArrayList<String> uploadDirs = new ArrayList<>();
-        config.allowedUploadDirs.forEach((path) -> {
-            uploadDirs.add(path.toString());
-        });
-        Assertions.assertTrue(uploadDirs.contains("/tmp"));
-        Assertions.assertTrue(uploadDirs.contains("/var"));
+        Assertions.assertTrue(config.allowedUploadDirs.contains(tmp));
+        Assertions.assertTrue(config.allowedUploadDirs.contains(userDir));
     }
 }
