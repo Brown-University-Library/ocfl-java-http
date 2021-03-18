@@ -29,7 +29,7 @@ public class OcflHttpTest {
 
     Server server;
     OcflHttp ocflHttp;
-    String tmpDir = System.getProperty("java.io.tmpdir");
+    Path tmp = Path.of(System.getProperty("java.io.tmpdir"));
     Path tmpRoot;
     Path workDir;
     HttpClient client;
@@ -43,7 +43,7 @@ public class OcflHttpTest {
         tmpRoot = Files.createTempDirectory("ocfl-java-http-tests");
         workDir = Files.createTempDirectory("ocfl-java-http-tests-work");
         final ArrayList<Path> uploadDirs = new ArrayList<>();
-        uploadDirs.add(Path.of(tmpDir));
+        uploadDirs.add(tmp);
         ocflHttp = new OcflHttp(tmpRoot, workDir, OcflHttpConfig.DEFAULT_FILE_SIZE_THRESHOLD, uploadDirs);
         server = OcflHttp.getServer(8000, 8, 60);
         server.setHandler(ocflHttp);
@@ -79,7 +79,7 @@ public class OcflHttpTest {
         Assertions.assertEquals(200, response.statusCode());
         var body = response.body();
         final var rootDirStr = tmpRoot.toString().replace("\\", "\\\\");
-        final var tmpDirStr = tmpDir.toString().replace("\\", "\\\\");
+        final var tmpDirStr = tmp.toString().replace("\\", "\\\\");
         final var expectedStr = "{\"OCFL ROOT\":\"" + rootDirStr + "\",\"ALLOWED-UPLOAD-DIRS\":[\"" + tmpDirStr + "\"]}";
         Assertions.assertEquals(body, expectedStr);
 
