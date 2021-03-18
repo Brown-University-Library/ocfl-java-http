@@ -510,6 +510,7 @@ public class MultipleFilesUploadTest {
         //the larger file should have been written to disk - make sure it was deleted
         try (Stream stream = Files.list(jettyDir)) {
             var numFiles = stream.count();
+            //NOTE: this is a bit unstable - sometimes the file hasn't been deleted yet, so the assertion fails
             Assertions.assertEquals(0, numFiles);
         }
     }

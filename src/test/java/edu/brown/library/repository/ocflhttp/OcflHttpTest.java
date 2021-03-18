@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 
 import edu.wisc.library.ocfl.api.model.ObjectVersionId;
 import edu.wisc.library.ocfl.api.model.VersionInfo;
@@ -28,6 +29,7 @@ public class OcflHttpTest {
 
     Server server;
     OcflHttp ocflHttp;
+    Path tmp = Path.of(System.getProperty("java.io.tmpdir"));
     Path tmpRoot;
     Path workDir;
     HttpClient client;
@@ -40,7 +42,9 @@ public class OcflHttpTest {
     private void setup() throws Exception {
         tmpRoot = Files.createTempDirectory("ocfl-java-http-tests");
         workDir = Files.createTempDirectory("ocfl-java-http-tests-work");
-        ocflHttp = new OcflHttp(tmpRoot, workDir);
+        final ArrayList<Path> uploadDirs = new ArrayList<>();
+        uploadDirs.add(tmp);
+        ocflHttp = new OcflHttp(tmpRoot, workDir, OcflHttpConfig.DEFAULT_FILE_SIZE_THRESHOLD, uploadDirs);
         server = OcflHttp.getServer(8000, 8, 60);
         server.setHandler(ocflHttp);
         server.start();
@@ -74,7 +78,10 @@ public class OcflHttpTest {
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
         var body = response.body();
-        Assertions.assertEquals("{\"OCFL ROOT\":\"" + tmpRoot.toString().replace("\\", "\\\\") + "\"}", body);
+        final var rootDirStr = tmpRoot.toString().replace("\\", "\\\\");
+        final var tmpDirStr = tmp.toString().replace("\\", "\\\\");
+        final var expectedStr = "{\"OCFL ROOT\":\"" + rootDirStr + "\",\"ALLOWED-UPLOAD-DIRS\":[\"" + tmpDirStr + "\"]}";
+        Assertions.assertEquals(body, expectedStr);
 
         //test unhandled/not found url
         url = "http://localhost:8000/not-found";
