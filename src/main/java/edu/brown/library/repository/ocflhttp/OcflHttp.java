@@ -17,6 +17,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.regex.Pattern;
 import java.util.logging.Logger;
 import javax.json.Json;
@@ -71,17 +72,22 @@ public class OcflHttp extends AbstractHandler {
     public static DateTimeFormatter IfModifiedFormatter = DateTimeFormatter.ofPattern("E, dd LLL uuuu kk:mm:ss O");
     private static Logger logger = Logger.getLogger("edu.brown.library.repository.ocflhttp");
     private static MultipartConfigElement MULTI_PART_CONFIG;
-    private static int DEFAULT_FILE_SIZE_THRESHOLD = 2500000;
 
     private Path repoRoot;
+    private List<Path> allowedUploadDirs;
     OcflRepository repo;
 
     public OcflHttp(Path root, Path workDir) throws Exception {
-        this(root, workDir, DEFAULT_FILE_SIZE_THRESHOLD);
+        this(root, workDir, OcflHttpConfig.DEFAULT_FILE_SIZE_THRESHOLD);
     }
 
     public OcflHttp(Path root, Path workDir, int fileSizeThreshold) throws Exception {
+        this(root, workDir, fileSizeThreshold, List.of());
+    }
+
+    public OcflHttp(Path root, Path workDir, int fileSizeThreshold, List<Path> uploadDirs) throws Exception {
         repoRoot = root;
+        allowedUploadDirs = uploadDirs;
         var repoBuilder = new OcflRepositoryBuilder();
         repoBuilder.defaultLayoutConfig(new HashedNTupleIdEncapsulationLayoutConfig());
         var ocflJavaWorkDir = workDir.resolve("ocfl-java");
@@ -114,7 +120,16 @@ public class OcflHttp extends AbstractHandler {
     }
 
     JsonObject getRootOutput() {
-        return Json.createObjectBuilder().add("OCFL ROOT", repoRoot.toString()).build();
+        var builder = Json.createObjectBuilder();
+        builder.add("OCFL ROOT", repoRoot.toString());
+        if (!allowedUploadDirs.isEmpty()) {
+            var uploadDirsBuilder = Json.createArrayBuilder();
+            allowedUploadDirs.forEach((uploadDir) -> {
+                uploadDirsBuilder.add(uploadDir.toString());
+            });
+            builder.add("ALLOWED-UPLOAD-DIRS", uploadDirsBuilder);
+        }
+        return builder.build();
     }
 
     void handleRoot(HttpServletResponse response) throws IOException {
@@ -237,8 +252,12 @@ public class OcflHttp extends AbstractHandler {
                         if (fileURI != null && !fileURI.isEmpty()) {
                             try {
                                 var path = Path.of(new URI(fileURI));
-                                var inputStream = Files.newInputStream(path);
-                                files.put(fileName, inputStream);
+                                if (uploadDirectoryAllowed(path, allowedUploadDirs)) {
+                                    var inputStream = Files.newInputStream(path);
+                                    files.put(fileName, inputStream);
+                                } else {
+                                    throw new InvalidLocationException("invalid location - upload directory not allowed: " + fileURI);
+                                }
                             } catch (URISyntaxException e) {
                                 logger.warning("URISyntaxException: " + e.getMessage());
                                 throw new InvalidLocationException("invalid location: " + fileURI);
@@ -863,6 +882,20 @@ public class OcflHttp extends AbstractHandler {
         baseRequest.setHandled(true);
     }
 
+    public static boolean uploadDirectoryAllowed(Path path, List<Path> uploadDirs) {
+        boolean allowed = false;
+        if (uploadDirs.isEmpty()) {
+            allowed = true;
+        } else {
+            for (Path dir : uploadDirs) {
+                if (path.toAbsolutePath().startsWith(dir)) {
+                    allowed = true;
+                }
+            }
+        }
+        return allowed;
+    }
+
     public static String getContentType(InputStream is, String name) throws IOException {
         /*
         There could be a couple issues with this tika-detection:
@@ -940,31 +973,9 @@ public class OcflHttp extends AbstractHandler {
     }
 
     public static void main(String[] args) throws Exception {
-        var port = 8000;
-        var minThreads = -1;
-        var maxThreads = -1;
-        var tmp = System.getProperty("java.io.tmpdir");
-        var repoRootDir = Path.of(tmp).resolve("ocfl-java-http");
-        Path workDir = Path.of(tmp);
-        var fileSizeThreshold = DEFAULT_FILE_SIZE_THRESHOLD;
-        if(args.length == 1) {
-            var pathToConfigFile = args[0];
-            try(InputStream is = Files.newInputStream(Path.of(pathToConfigFile))) {
-                var reader = Json.createReader(is);
-                var object = reader.readObject();
-                repoRootDir = Path.of(object.getString("OCFL-ROOT"));
-                port = object.getInt("PORT");
-                minThreads = object.getInt("JETTY_MIN_THREADS", -1);
-                maxThreads = object.getInt("JETTY_MAX_THREADS", -1);
-                var workDirParam = object.getString("WORK-DIRECTORY", null);
-                if(workDirParam != null) {
-                    workDir = Path.of(workDirParam);
-                }
-                fileSizeThreshold = object.getInt("FILE_SIZE_THRESHOLD", DEFAULT_FILE_SIZE_THRESHOLD);
-            }
-        }
-        var server = getServer(port, minThreads, maxThreads);
-        var ocflHttp = new OcflHttp(repoRootDir, workDir, fileSizeThreshold);
+        var config = new OcflHttpConfig(args);
+        var server = getServer(config.port, config.minThreads, config.maxThreads);
+        var ocflHttp = new OcflHttp(config.repoRootDir, config.workDir, config.fileSizeThreshold, config.allowedUploadDirs);
         server.setHandler(ocflHttp);
         server.start();
         server.join();
