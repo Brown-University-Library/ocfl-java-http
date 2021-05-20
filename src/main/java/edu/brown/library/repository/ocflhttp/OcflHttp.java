@@ -149,7 +149,25 @@ public class OcflHttp extends AbstractHandler {
                 versions.forEach((versionNum, versionDetails) -> {
                     var versionOutput = Json.createObjectBuilder();
                     var created = versionDetails.getCreated().withOffsetSameInstant(ZoneOffset.UTC);
+                    var message = versionDetails.getVersionInfo().getMessage();
+                    var user = versionDetails.getVersionInfo().getUser();
+                    String userInfo = "";
+                    if (message == null) {
+                        message = "";
+                    }
+                    if (user != null) {
+                        String userName = user.getName();
+                        if (userName != null) {
+                            userInfo = userName;
+                        }
+                        String userAddress = user.getAddress();
+                        if (userAddress != null) {
+                            userInfo = userInfo + " <" + userAddress + ">";
+                        }
+                    }
                     versionOutput.add("created", created.format(DateTimeFormatter.ISO_DATE_TIME));
+                    versionOutput.add("user", userInfo);
+                    versionOutput.add("message", message);
                     output.add(versionNum.toString(), versionOutput.build());
                 });
                 var writer = Json.createWriter(response.getWriter());
