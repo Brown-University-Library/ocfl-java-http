@@ -44,7 +44,7 @@ API
     - delete file <file_name> from object
     - returns 204 if successful (or if file was already deleted), 404 if <file_name> doesn't exist
 - GET /<object_id>/versions
-    - returns JSON versions data, eg: {"v1": {"created": "2020-11-25T20:30:43.73776Z"}, "v2": {"created: "2020-12-05T20:30:43.73776Z"}}
+    - returns JSON versions data, eg: {"v1": {"created": "2020-11-25T20:30:43.73776Z", "user": "someone <someone@school.edu>", "message": "test message"}}
     - returns 404 if object doesn't exist
 - GET /<object_id>/vN/files
     - retrieve list of files (like /<object_id>/files, but for a specific version)

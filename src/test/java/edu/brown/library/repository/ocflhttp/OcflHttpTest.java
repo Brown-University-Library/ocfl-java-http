@@ -109,7 +109,10 @@ public class OcflHttpTest {
 
     @Test
     public void testVersions() throws Exception {
-        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+        var versionInfo = new VersionInfo();
+        versionInfo.setMessage("test message");
+        versionInfo.setUser("someone", "someone@school.edu");
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), versionInfo, updater -> {
             updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)),"file1");
         });
         ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
@@ -121,7 +124,11 @@ public class OcflHttpTest {
         Assertions.assertEquals(200, response.statusCode());
         JsonObject responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
         Assertions.assertTrue(responseJson.getJsonObject("v1").getString("created").endsWith("Z"));
+        Assertions.assertEquals("test message", responseJson.getJsonObject("v1").getString("message"));
+        Assertions.assertEquals("someone <someone@school.edu>", responseJson.getJsonObject("v1").getString("user"));
         Assertions.assertTrue(responseJson.getJsonObject("v2").getString("created").endsWith("Z"));
+        Assertions.assertEquals("", responseJson.getJsonObject("v2").getString("message"));
+        Assertions.assertEquals("", responseJson.getJsonObject("v2").getString("user"));
     }
 
     @Test
