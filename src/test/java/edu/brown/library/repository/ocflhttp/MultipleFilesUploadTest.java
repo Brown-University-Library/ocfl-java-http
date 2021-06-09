@@ -19,6 +19,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.Normalizer;
+import java.time.format.DateTimeFormatter;
 import java.util.stream.Stream;
 
 public class MultipleFilesUploadTest {
@@ -326,6 +327,65 @@ public class MultipleFilesUploadTest {
         user = object.getVersionInfo().getUser();
         Assertions.assertEquals("someoneelse", user.getName());
         Assertions.assertEquals("someoneelse@school.edu", user.getAddress());
+    }
+
+    @Test
+    public void testCreatedParam() throws Exception {
+        //missing created value
+        var uri = URI.create("http://localhost:8000/" + objectId + "/files?created=&message=adding&userName=someone&userAddress=someone%40school.edu");
+        var multipartData = "--" + boundary + "\r\n" +
+                paramsContentDisposition + "\r\n" +
+                "\r\n" +
+                "{}" + "\r\n" +
+                "--" + boundary + "\r\n" +
+                file1ContentDisposition + "\r\n" +
+                "\r\n" +
+                "asdf\r\n" +
+                "--" + boundary + "--";
+        var request = HttpRequest.newBuilder(uri)
+                .header("Content-Type", contentTypeHeader)
+                .POST(HttpRequest.BodyPublishers.ofString(multipartData)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(400, response.statusCode());
+
+        //invalid created value
+        uri = URI.create("http://localhost:8000/" + objectId + "/files?created=asdf&message=adding&userName=someone&userAddress=someone%40school.edu");
+        request = HttpRequest.newBuilder(uri)
+                .header("Content-Type", contentTypeHeader)
+                .POST(HttpRequest.BodyPublishers.ofString(multipartData)).build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(400, response.statusCode());
+
+        //valid created values
+        uri = URI.create("http://localhost:8000/" + objectId + "/files?created=2021-01-15T13:05:20Z&message=adding&userName=someone&userAddress=someone%40school.edu");
+        request = HttpRequest.newBuilder(uri)
+                .header("Content-Type", contentTypeHeader)
+                .POST(HttpRequest.BodyPublishers.ofString(multipartData)).build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(201, response.statusCode());
+        var object = ocflHttp.repo.getObject(ObjectVersionId.head(objectId));
+        var versionInfo = object.getVersionInfo();
+        Assertions.assertEquals("2021-01-15T13:05:20Z", versionInfo.getCreated().format(DateTimeFormatter.ISO_DATE_TIME));
+
+        //now put a change
+        uri = URI.create("http://localhost:8000/" + objectId + "/files?created=2021-01-31T21:56:13.012345Z&updateExisting=true&message=updating%20multiple%20files%20%26%20so%20on&userName=someoneelse&userAddress=someoneelse%40school.edu");
+        var newMultipartData = "--" + boundary + "\r\n" +
+                paramsContentDisposition + "\r\n" +
+                "\r\n" +
+                "{}" + "\r\n" +
+                "--" + boundary + "\r\n" +
+                file1ContentDisposition + "\r\n" +
+                "\r\n" +
+                "new first file contents\r\n" +
+                "--" + boundary + "--";
+        request = HttpRequest.newBuilder(uri)
+                .header("Content-Type", contentTypeHeader)
+                .PUT(HttpRequest.BodyPublishers.ofString(newMultipartData)).build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(201, response.statusCode());
+        var objectV2 = ocflHttp.repo.getObject(ObjectVersionId.version(objectId, 2));
+        versionInfo = objectV2.getVersionInfo();
+        Assertions.assertEquals("2021-01-31T21:56:13.012345Z", versionInfo.getCreated().format(DateTimeFormatter.ISO_DATE_TIME));
     }
 
     @Test
