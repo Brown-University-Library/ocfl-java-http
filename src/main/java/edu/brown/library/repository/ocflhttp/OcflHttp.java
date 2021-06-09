@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
+import java.util.logging.Level;
 import java.util.regex.Pattern;
 import java.util.logging.Logger;
 import javax.json.Json;
@@ -99,22 +100,20 @@ public class OcflHttp extends AbstractHandler {
         MULTI_PART_CONFIG = new MultipartConfigElement(jettyWorkDir.toString(), -1L, -1L, fileSizeThreshold);
     }
 
-    void writeFilesToObject(ObjectVersionId objectVersionId, HashMap<String, InputStream> files, VersionInfo versionInfo, boolean overwrite)
-    {
+    void writeFilesToObject(ObjectVersionId objectVersionId, HashMap<String, InputStream> files, VersionInfo versionInfo, boolean overwrite) {
         repo.updateObject(objectVersionId, versionInfo, updater -> {
-                files.forEach((fileName, inputStream) -> {
-                    var fileNameNFC = Normalizer.normalize(fileName, Normalizer.Form.NFC);
-                    if(overwrite) {
-                        updater.writeFile(inputStream, fileNameNFC, OVERWRITE);
-                    } else {
-                        updater.writeFile(inputStream, fileNameNFC);
-                    }
-                });
+            files.forEach((fileName, inputStream) -> {
+                var fileNameNFC = Normalizer.normalize(fileName, Normalizer.Form.NFC);
+                if (overwrite) {
+                    updater.writeFile(inputStream, fileNameNFC, OVERWRITE);
+                } else {
+                    updater.writeFile(inputStream, fileNameNFC);
+                }
+            });
         });
     }
 
-    void setResponseError(HttpServletResponse response, int statusCode, String msg) throws IOException
-    {
+    void setResponseError(HttpServletResponse response, int statusCode, String msg) throws IOException {
         response.setStatus(statusCode);
         response.getOutputStream().write(msg.getBytes(StandardCharsets.UTF_8.toString()));
     }
@@ -142,7 +141,7 @@ public class OcflHttp extends AbstractHandler {
 
     void handleObjectVersions(HttpServletRequest request, HttpServletResponse response, String objectId) throws IOException {
         var method = request.getMethod();
-        if(method.equals("GET")) {
+        if (method.equals("GET")) {
             if (repo.containsObject(objectId)) {
                 var versions = repo.describeObject(objectId).getVersionMap();
                 var output = Json.createObjectBuilder();
@@ -175,8 +174,7 @@ public class OcflHttp extends AbstractHandler {
             } else {
                 setResponseError(response, HttpServletResponse.SC_NOT_FOUND, objectId + " not found");
             }
-        }
-        else {
+        } else {
             setResponseError(response, HttpServletResponse.SC_METHOD_NOT_ALLOWED, "");
         }
     }
@@ -184,8 +182,8 @@ public class OcflHttp extends AbstractHandler {
     HashMap<String, String> parseUrlParams(String queryString) {
         HashMap<String, String> params = new HashMap<>();
         var paramParts = queryString.split("&");
-        for(String paramPart: paramParts) {
-            if(paramPart.contains("=")) {
+        for (String paramPart : paramParts) {
+            if (paramPart.contains("=")) {
                 var paramName = paramPart.split("=")[0];
                 var paramValue = paramPart.split("=")[1];
                 if (!params.containsKey(paramName)) {
@@ -199,7 +197,7 @@ public class OcflHttp extends AbstractHandler {
     VersionInfo getVersionInfo(HttpServletRequest request) {
         var versionInfo = new VersionInfo();
         var queryString = request.getQueryString();
-        if(queryString != null) {
+        if (queryString != null) {
             var params = parseUrlParams(queryString);
             var messageParam = params.get("message");
             if (messageParam != null) {
@@ -230,8 +228,8 @@ public class OcflHttp extends AbstractHandler {
     }
 
     HashMap<String, String> getRenameInfo(HttpServletRequest request) throws IOException, ServletException {
-        for(Part p: request.getParts()) {
-            if(p.getName().equals("rename")) {
+        for (Part p : request.getParts()) {
+            if (p.getName().equals("rename")) {
                 HashMap<String, String> info = new HashMap<String, String>();
                 JsonReader reader = Json.createReader(p.getInputStream());
                 var renameJson = reader.readObject();
@@ -248,12 +246,11 @@ public class OcflHttp extends AbstractHandler {
     HashMap<String, InputStream> getFiles(HttpServletRequest request) throws IOException, ServletException, InvalidLocationException {
         var files = new HashMap<String, InputStream>();
         JsonObject params = null;
-        for(Part p: request.getParts()) {
-            if(p.getName().equals("params")) {
+        for (Part p : request.getParts()) {
+            if (p.getName().equals("params")) {
                 JsonReader reader = Json.createReader(p.getInputStream());
                 params = reader.readObject();
-            }
-            else {
+            } else {
                 var fileName = p.getSubmittedFileName();
                 files.put(fileName, p.getInputStream());
             }
@@ -304,8 +301,7 @@ public class OcflHttp extends AbstractHandler {
                     }
                 }
             }
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             closeFilesInputStreams(files);
             throw e;
         }
@@ -315,8 +311,7 @@ public class OcflHttp extends AbstractHandler {
     void handleObjectFilesPost(HttpServletRequest request,
                                HttpServletResponse response,
                                String objectId)
-            throws IOException, ServletException
-    {
+            throws IOException, ServletException {
         var versionInfo = getVersionInfo(request);
         try {
             var files = getFiles(request);
@@ -333,25 +328,23 @@ public class OcflHttp extends AbstractHandler {
             } finally {
                 closeFilesInputStreams(files);
             }
-        }
-        catch(InvalidLocationException e) {
+        } catch (InvalidLocationException e) {
             logger.warning(e.getMessage());
             setResponseError(response, HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
         }
     }
 
     void handleObjectFilesPut(HttpServletRequest request,
-                               HttpServletResponse response,
-                               String objectId)
-            throws IOException, ServletException
-    {
+                              HttpServletResponse response,
+                              String objectId)
+            throws IOException, ServletException {
         var versionInfo = getVersionInfo(request);
         try {
             var renameInfo = getRenameInfo(request);
-            if(renameInfo != null) {
+            if (renameInfo != null) {
                 var oldPath = renameInfo.get("old");
                 var newPath = renameInfo.get("new");
-                if(repo.containsObject(objectId)) {
+                if (repo.containsObject(objectId)) {
                     var object = repo.getObject(ObjectVersionId.head(objectId));
                     if (object.containsFile(oldPath)) {
                         try {
@@ -359,15 +352,13 @@ public class OcflHttp extends AbstractHandler {
                                 updater.renameFile(oldPath, newPath);
                             });
                             response.setStatus(HttpServletResponse.SC_NO_CONTENT);
-                        }
-                        catch(OverwriteException e) {
+                        } catch (OverwriteException e) {
                             setResponseError(response, HttpServletResponse.SC_CONFLICT, newPath + " already exists");
                         }
                     } else {
                         setResponseError(response, HttpServletResponse.SC_NOT_FOUND, oldPath + " doesn't exist");
                     }
-                }
-                else {
+                } else {
                     setResponseError(response, HttpServletResponse.SC_NOT_FOUND, objectId + " doesn't exist");
                 }
                 return;
@@ -404,8 +395,7 @@ public class OcflHttp extends AbstractHandler {
             } finally {
                 closeFilesInputStreams(files);
             }
-        }
-        catch(InvalidLocationException e) {
+        } catch (InvalidLocationException e) {
             logger.warning(e.getMessage());
             setResponseError(response, HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
         }
@@ -422,8 +412,7 @@ public class OcflHttp extends AbstractHandler {
                                  String objectId,
                                  OcflObjectVersion object,
                                  String path)
-            throws IOException
-    {
+            throws IOException {
         handleObjectPathGetHead(request, response, objectId, object, path, -1);
     }
 
@@ -433,9 +422,8 @@ public class OcflHttp extends AbstractHandler {
                                  OcflObjectVersion object,
                                  String path,
                                  int versionNum)
-            throws IOException
-    {
-        if(object.containsFile(path)) {
+            throws IOException {
+        if (object.containsFile(path)) {
             response.setStatus(HttpServletResponse.SC_OK);
             response.addHeader("Accept-Ranges", "bytes");
             var file = object.getFile(path);
@@ -445,21 +433,21 @@ public class OcflHttp extends AbstractHandler {
             }
             var filePath = repoRoot.resolve(file.getStorageRelativePath());
             var fileSize = Files.size(filePath);
-            if(request.getMethod().equals("GET")) {
+            if (request.getMethod().equals("GET")) {
                 var fileLastModifiedUTC = getFileLastModifiedUTC(objectId, path);
                 var digestAlgorithm = repo.describeObject(objectId).getDigestAlgorithm();
                 var digestValue = file.getFixity().get(digestAlgorithm);
                 var ifNoneMatchHeader = request.getHeader(OcflHttp.IfNoneMatchHeader);
-                if(ifNoneMatchHeader != null && !ifNoneMatchHeader.isEmpty()) {
-                    if(ifNoneMatchHeader.replace("\"", "").equals(digestValue)) {
+                if (ifNoneMatchHeader != null && !ifNoneMatchHeader.isEmpty()) {
+                    if (ifNoneMatchHeader.replace("\"", "").equals(digestValue)) {
                         response.setStatus(HttpServletResponse.SC_NOT_MODIFIED);
                         return;
                     }
                 }
                 var ifModifiedSinceHeader = request.getHeader(OcflHttp.IfModifiedSinceHeader);
-                if(ifModifiedSinceHeader != null && !ifModifiedSinceHeader.isEmpty()) {
+                if (ifModifiedSinceHeader != null && !ifModifiedSinceHeader.isEmpty()) {
                     var headerLastModifiedUTC = OffsetDateTime.parse(ifModifiedSinceHeader, OcflHttp.IfModifiedFormatter);
-                    if(!fileLastModifiedUTC.truncatedTo(ChronoUnit.SECONDS).isAfter(headerLastModifiedUTC)) {
+                    if (!fileLastModifiedUTC.truncatedTo(ChronoUnit.SECONDS).isAfter(headerLastModifiedUTC)) {
                         response.setStatus(HttpServletResponse.SC_NOT_MODIFIED);
                         return;
                     }
@@ -467,23 +455,21 @@ public class OcflHttp extends AbstractHandler {
                 var rangeHeader = request.getHeader("Range");
                 var start = 0L;
                 var end = fileSize - 1L; //end value is included in the range
-                if(rangeHeader != null && !rangeHeader.isEmpty()) {
+                if (rangeHeader != null && !rangeHeader.isEmpty()) {
                     var range = OcflHttp.parseRangeHeader(rangeHeader, fileSize);
-                    if(range != null) {
+                    if (range != null) {
                         start = range.getOrDefault("start", start);
                         end = range.getOrDefault("end", end);
                         response.setStatus(HttpServletResponse.SC_PARTIAL_CONTENT);
                         var contentRange = "bytes " + start + "-" + end + "/" + fileSize;
                         response.addHeader("Content-Range", contentRange);
-                    }
-                    else {
+                    } else {
                         response.setStatus(HttpServletResponse.SC_REQUESTED_RANGE_NOT_SATISFIABLE);
                         var contentRange = "bytes */" + fileSize;
                         response.addHeader("Content-Range", contentRange);
                         return;
                     }
-                }
-                else {
+                } else {
                     var lastModifiedHeader = fileLastModifiedUTC.format(OcflHttp.IfModifiedFormatter);
                     response.addHeader("Last-Modified", lastModifiedHeader);
                     response.addHeader("ETag", "\"" + digestValue + "\"");
@@ -496,11 +482,10 @@ public class OcflHttp extends AbstractHandler {
                         stream.skip(start);
                         var currentPosition = start;
                         while (true) {
-                            if(currentPosition + ChunkSize > end) {
-                                bytesRead = stream.readNBytes((int)(end + 1 - currentPosition)); //safe - this is less than ChunkSize
-                            }
-                            else {
-                                bytesRead = stream.readNBytes((int)ChunkSize); //safe - ChunkSize isn't huge
+                            if (currentPosition + ChunkSize > end) {
+                                bytesRead = stream.readNBytes((int) (end + 1 - currentPosition)); //safe - this is less than ChunkSize
+                            } else {
+                                bytesRead = stream.readNBytes((int) ChunkSize); //safe - ChunkSize isn't huge
                             }
                             if (bytesRead.length > 0) {
                                 outputStream.write(bytesRead);
@@ -511,22 +496,20 @@ public class OcflHttp extends AbstractHandler {
                         }
                     }
                 }
-            }
-            else {
+            } else {
                 response.addHeader("Content-Length", String.valueOf(fileSize));
             }
-        }
-        else {
+        } else {
             //check for deleted object
             var activeFiles = repo.describeVersion(ObjectVersionId.head(objectId)).getFiles();
-            if(activeFiles.isEmpty()) {
+            if (activeFiles.isEmpty()) {
                 setResponseError(response, HttpServletResponse.SC_GONE, "object " + objectId + " deleted");
                 return;
             }
             //check for deleted file
             var allObjectVersions = repo.describeObject(objectId).getVersionMap().values();
-            for(VersionDetails v: allObjectVersions) {
-                if(versionNum == -1) {
+            for (VersionDetails v : allObjectVersions) {
+                if (versionNum == -1) {
                     for (FileDetails f : v.getFiles()) {
                         if (f.getPath().equals(path)) {
                             setResponseError(response, HttpServletResponse.SC_GONE, "file " + path + " deleted");
@@ -544,19 +527,17 @@ public class OcflHttp extends AbstractHandler {
                                  HttpServletResponse response,
                                  String objectId,
                                  String path)
-            throws IOException
-    {
+            throws IOException {
         var method = request.getMethod();
-        if(method.equals("GET") || method.equals("HEAD")) {
+        if (method.equals("GET") || method.equals("HEAD")) {
             try {
                 var object = repo.getObject(ObjectVersionId.head(objectId));
                 handleObjectPathGetHead(request, response, objectId, object, path);
-            } catch(NotFoundException e) {
+            } catch (NotFoundException e) {
                 var msg = objectId + " not found";
                 setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
             }
-        }
-        else {
+        } else {
             setResponseError(response, HttpServletResponse.SC_METHOD_NOT_ALLOWED, "");
         }
     }
@@ -566,38 +547,34 @@ public class OcflHttp extends AbstractHandler {
                                         String objectId,
                                         String path,
                                         int versionNum)
-            throws IOException
-    {
+            throws IOException {
         var method = request.getMethod();
-        if(method.equals("GET") || method.equals("HEAD")) {
-            if(repo.containsObject(objectId)) {
+        if (method.equals("GET") || method.equals("HEAD")) {
+            if (repo.containsObject(objectId)) {
                 try {
                     var object = repo.getObject(ObjectVersionId.version(objectId, versionNum));
                     handleObjectPathGetHead(request, response, objectId, object, path, versionNum);
-                } catch(NotFoundException e) {
+                } catch (NotFoundException e) {
                     var msg = "version v" + versionNum + " not found";
                     setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
                 }
-            }
-            else {
+            } else {
                 var msg = objectId + " not found";
                 setResponseError(response, HttpServletResponse.SC_NOT_FOUND, msg);
             }
-        }
-        else {
+        } else {
             setResponseError(response, HttpServletResponse.SC_METHOD_NOT_ALLOWED, "");
         }
     }
 
     void handleObjectPath(HttpServletRequest request,
-                                 HttpServletResponse response,
-                                 String objectId,
-                                 String path)
-            throws IOException
-    {
+                          HttpServletResponse response,
+                          String objectId,
+                          String path)
+            throws IOException {
         var method = request.getMethod();
-        if(method.equals("DELETE")) {
-            if(repo.containsObject(objectId)) {
+        if (method.equals("DELETE")) {
+            if (repo.containsObject(objectId)) {
                 var versionInfo = getVersionInfo(request);
                 var object = repo.getObject(ObjectVersionId.head(objectId));
                 if (object.containsFile(path)) {
@@ -619,12 +596,10 @@ public class OcflHttp extends AbstractHandler {
                     //file never existed, so return 404
                     setResponseError(response, HttpServletResponse.SC_NOT_FOUND, path + " not found");
                 }
-            }
-            else {
+            } else {
                 setResponseError(response, HttpServletResponse.SC_NOT_FOUND, objectId + " not found");
             }
-        }
-        else {
+        } else {
             setResponseError(response, HttpServletResponse.SC_METHOD_NOT_ALLOWED, "");
         }
     }
@@ -632,8 +607,7 @@ public class OcflHttp extends AbstractHandler {
     void handleObjectFiles(HttpServletRequest request,
                            HttpServletResponse response,
                            String objeectId)
-        throws IOException, ServletException
-    {
+            throws IOException, ServletException {
         handleObjectFiles(request, response, objeectId, -1);
     }
 
@@ -641,31 +615,29 @@ public class OcflHttp extends AbstractHandler {
                            HttpServletResponse response,
                            String objectId,
                            int versionNum)
-        throws IOException, ServletException
-    {
+            throws IOException, ServletException {
         var method = request.getMethod();
-        if(method.equals("GET")) {
+        if (method.equals("GET")) {
             if (repo.containsObject(objectId)) {
                 var fieldsParam = request.getParameter(FieldsParameter);
-                if(fieldsParam == null) {
+                if (fieldsParam == null) {
                     fieldsParam = "";
                 }
                 var fields = fieldsParam.split(",");
                 var filesInfoMap = new HashMap<String, JsonObject>();
                 //add all active files
                 Collection<FileDetails> activeFiles = null;
-                if(versionNum == -1) {
+                if (versionNum == -1) {
                     activeFiles = repo.describeVersion(ObjectVersionId.head(objectId)).getFiles();
-                }
-                else {
+                } else {
                     try {
                         activeFiles = repo.describeVersion(ObjectVersionId.version(objectId, versionNum)).getFiles();
-                    } catch(NotFoundException e) {
+                    } catch (NotFoundException e) {
                         setResponseError(response, HttpServletResponse.SC_NOT_FOUND, "");
                         return;
                     }
                 }
-                if(activeFiles.isEmpty()) {
+                if (activeFiles.isEmpty()) {
                     setResponseError(response, HttpServletResponse.SC_GONE, "object " + objectId + " deleted");
                     return;
                 }
@@ -682,7 +654,7 @@ public class OcflHttp extends AbstractHandler {
                                 info.add("size", fileSize);
                                 break;
                             case "mimetype":
-                                try(InputStream is = repo.getObject(ObjectVersionId.head(objectId)).getFile(f.getPath()).getStream()) {
+                                try (InputStream is = repo.getObject(ObjectVersionId.head(objectId)).getFile(f.getPath()).getStream()) {
                                     var mimetype = getContentType(is, f.getPath());
                                     info.add("mimetype", mimetype);
                                 }
@@ -699,7 +671,7 @@ public class OcflHttp extends AbstractHandler {
                     }
                     filesInfoMap.put(f.getPath(), info.build());
                 }
-                if(versionNum == -1) {
+                if (versionNum == -1) {
                     //now fill in deleted files if needed
                     var includeDeletedParam = request.getParameter(IncludeDeletedParameter);
                     if (includeDeletedParam != null && includeDeletedParam.equals("true")) {
@@ -764,14 +736,14 @@ public class OcflHttp extends AbstractHandler {
                     filesOutput.add(fileName, jsonInfo);
                 });
                 var outputBuilder = Json.createObjectBuilder();
-                if(versionNum == -1) {
+                if (versionNum == -1) {
                     outputBuilder.add("version", repo.describeObject(objectId).getHeadVersionNum().toString());
                 } else {
                     outputBuilder.add("version", "v" + versionNum);
                 }
                 outputBuilder.add("files", filesOutput);
                 var objectTimestampsParam = request.getParameter(ObjectTimestampsParameter);
-                if(objectTimestampsParam != null && objectTimestampsParam.equals("true")) {
+                if (objectTimestampsParam != null && objectTimestampsParam.equals("true")) {
                     var objectOutput = Json.createObjectBuilder();
                     objectOutput.add("created", repo.getObject(ObjectVersionId.version(objectId, VersionNum.V1)).getCreated().withOffsetSameInstant(ZoneOffset.UTC).format(DateTimeFormatter.ISO_DATE_TIME));
                     objectOutput.add("lastModified", repo.getObject(ObjectVersionId.head(objectId)).getCreated().withOffsetSameInstant(ZoneOffset.UTC).format(DateTimeFormatter.ISO_DATE_TIME));
@@ -782,26 +754,22 @@ public class OcflHttp extends AbstractHandler {
                 response.addHeader("Accept-Ranges", "bytes");
                 var writer = Json.createWriter(response.getWriter());
                 writer.writeObject(output);
-            }
-            else {
+            } else {
                 setResponseError(response, HttpServletResponse.SC_NOT_FOUND, objectId + " not found");
             }
-        }
-        else {
-            if(method.equals("DELETE")) {
-                if(repo.containsObject(objectId)) {
+        } else {
+            if (method.equals("DELETE")) {
+                if (repo.containsObject(objectId)) {
                     repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
                         repo.getObject(ObjectVersionId.head(objectId)).getFiles().forEach((fileDetails) -> {
                             updater.removeFile(fileDetails.getPath());
                         });
                     });
                     response.setStatus(HttpServletResponse.SC_NO_CONTENT);
-                }
-                else {
+                } else {
                     setResponseError(response, HttpServletResponse.SC_NOT_FOUND, objectId + " not found");
                 }
-            }
-            else {
+            } else {
                 try {
                     if (method.equals("POST")) {
                         handleObjectFilesPost(request, response, objectId);
@@ -813,24 +781,20 @@ public class OcflHttp extends AbstractHandler {
                 } catch (IllegalStateException e) {
                     var exceptionMsg = e.toString();
                     logger.warning(exceptionMsg);
-                    if(exceptionMsg.contains("Illegal character")) {
+                    if (exceptionMsg.contains("Illegal character")) {
                         setResponseError(response, HttpServletResponse.SC_BAD_REQUEST, "invalid character in filename");
-                    }
-                    else {
+                    } else {
                         throw e;
                     }
-                } catch (Exception e) {
-                    logger.severe(e.toString());
-                    throw e;
                 }
             }
         }
     }
 
-    public void handle(String target,
-                       Request baseRequest,
-                       HttpServletRequest request,
-                       HttpServletResponse response)
+    private void handleRequest(String target,
+                                Request baseRequest,
+                                HttpServletRequest request,
+                                HttpServletResponse response)
             throws IOException, ServletException
     {
         if (request.getContentType() != null && request.getContentType().startsWith("multipart/form-data")) {
@@ -858,14 +822,11 @@ public class OcflHttp extends AbstractHandler {
                 } else {
                     var matcher3 = ObjectIdPathPattern.matcher(updatedRequestURI);
                     if(matcher3.matches()) {
-                        try {
-                            var objectId = URLDecoder.decode(matcher3.group(1), StandardCharsets.UTF_8.toString());
-                            objectId = Normalizer.normalize(objectId, Normalizer.Form.NFC);
-                            var path = URLDecoder.decode(matcher3.group(2), StandardCharsets.UTF_8.toString());
-                            path = Normalizer.normalize(path, Normalizer.Form.NFC);
-                            handleObjectPath(request, response, objectId, path);
-                        }
-                        catch(Exception e) {logger.severe(e.toString()); throw e;}
+                        var objectId = URLDecoder.decode(matcher3.group(1), StandardCharsets.UTF_8.toString());
+                        objectId = Normalizer.normalize(objectId, Normalizer.Form.NFC);
+                        var path = URLDecoder.decode(matcher3.group(2), StandardCharsets.UTF_8.toString());
+                        path = Normalizer.normalize(path, Normalizer.Form.NFC);
+                        handleObjectPath(request, response, objectId, path);
                     } else {
                         var matcher4 = ObjectIdVersionPathContentPattern.matcher(updatedRequestURI);
                         if(matcher4.matches()) {
@@ -898,6 +859,21 @@ public class OcflHttp extends AbstractHandler {
             }
         }
         baseRequest.setHandled(true);
+    }
+
+    public void handle(String target,
+                       Request baseRequest,
+                       HttpServletRequest request,
+                       HttpServletResponse response)
+            throws IOException, ServletException
+    {
+        try {
+            handleRequest(target, baseRequest, request, response);
+        } catch(Exception e) {
+            logger.log(Level.SEVERE, e.getMessage(), e);
+            setResponseError(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "internal server error");
+            baseRequest.setHandled(true);
+        }
     }
 
     public static boolean uploadDirectoryAllowed(Path path, List<Path> uploadDirs) {
