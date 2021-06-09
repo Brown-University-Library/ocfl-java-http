@@ -48,8 +48,8 @@ import org.apache.tika.Tika;
 
 import static edu.wisc.library.ocfl.api.OcflOption.OVERWRITE;
 
-class InvalidLocationException extends Exception {
-    public InvalidLocationException(String errMessage) {
+class InvalidRequestException extends Exception {
+    public InvalidRequestException(String errMessage) {
         super(errMessage);
     }
 }
@@ -183,35 +183,41 @@ public class OcflHttp extends AbstractHandler {
         HashMap<String, String> params = new HashMap<>();
         var paramParts = queryString.split("&");
         for (String paramPart : paramParts) {
-            if (paramPart.contains("=")) {
-                var paramName = paramPart.split("=")[0];
-                var paramValue = paramPart.split("=")[1];
-                if (!params.containsKey(paramName)) {
-                    params.put(paramName, URLDecoder.decode(paramValue, StandardCharsets.UTF_8));
-                }
+            var paramName = paramPart.split("=")[0];
+            var paramValue = paramPart.split("=")[1];
+            if (!params.containsKey(paramName)) {
+                params.put(paramName, URLDecoder.decode(paramValue, StandardCharsets.UTF_8));
             }
         }
         return params;
     }
 
-    VersionInfo getVersionInfo(HttpServletRequest request) {
+    VersionInfo getVersionInfo(HttpServletRequest request) throws InvalidRequestException {
         var versionInfo = new VersionInfo();
         var queryString = request.getQueryString();
         if (queryString != null) {
-            var params = parseUrlParams(queryString);
-            var messageParam = params.get("message");
-            if (messageParam != null) {
-                versionInfo.setMessage(messageParam);
-            }
-            var userNameParam = params.get("userName");
-            if (userNameParam != null) {
-                var userName = userNameParam;
-                var userAddressParam = params.get("userAddress");
-                var userAddress = "";
-                if (userAddressParam != null) {
-                    userAddress = userAddressParam;
+            try {
+                var params = parseUrlParams(queryString);
+                var messageParam = params.get("message");
+                if (messageParam != null) {
+                    versionInfo.setMessage(messageParam);
                 }
-                versionInfo.setUser(userName, userAddress);
+                var userNameParam = params.get("userName");
+                if (userNameParam != null) {
+                    var userName = userNameParam;
+                    var userAddressParam = params.get("userAddress");
+                    var userAddress = "";
+                    if (userAddressParam != null) {
+                        userAddress = userAddressParam;
+                    }
+                    versionInfo.setUser(userName, userAddress);
+                }
+                var createdParam = params.get("created");
+                if (createdParam != null) {
+                    versionInfo.setCreated(OffsetDateTime.parse(createdParam, DateTimeFormatter.ISO_DATE_TIME));
+                }
+            } catch (Exception e) {
+                throw new InvalidRequestException("invalid url params");
             }
         }
         return versionInfo;
@@ -243,7 +249,7 @@ public class OcflHttp extends AbstractHandler {
         return null;
     }
 
-    HashMap<String, InputStream> getFiles(HttpServletRequest request) throws IOException, ServletException, InvalidLocationException {
+    HashMap<String, InputStream> getFiles(HttpServletRequest request) throws IOException, ServletException, InvalidRequestException {
         var files = new HashMap<String, InputStream>();
         JsonObject params = null;
         for (Part p : request.getParts()) {
@@ -271,17 +277,17 @@ public class OcflHttp extends AbstractHandler {
                                     var inputStream = Files.newInputStream(path);
                                     files.put(fileName, inputStream);
                                 } else {
-                                    throw new InvalidLocationException("invalid location - upload directory not allowed: " + fileURI);
+                                    throw new InvalidRequestException("invalid location - upload directory not allowed: " + fileURI);
                                 }
                             } catch (URISyntaxException e) {
                                 logger.warning("URISyntaxException: " + e.getMessage());
-                                throw new InvalidLocationException("invalid location: " + fileURI);
+                                throw new InvalidRequestException("invalid location: " + fileURI);
                             } catch (IllegalArgumentException e) {
                                 logger.warning("IllegalArgumentException: " + e.getMessage());
-                                throw new InvalidLocationException("invalid location: " + fileURI);
+                                throw new InvalidRequestException("invalid location: " + fileURI);
                             } catch (NoSuchFileException e) {
                                 logger.warning(e.getMessage());
-                                throw new InvalidLocationException("invalid location - no such file: " + fileURI);
+                                throw new InvalidRequestException("invalid location - no such file: " + fileURI);
                             }
                         }
                     }
@@ -312,8 +318,8 @@ public class OcflHttp extends AbstractHandler {
                                HttpServletResponse response,
                                String objectId)
             throws IOException, ServletException {
-        var versionInfo = getVersionInfo(request);
         try {
+            var versionInfo = getVersionInfo(request);
             var files = getFiles(request);
             try {
                 try {
@@ -328,7 +334,7 @@ public class OcflHttp extends AbstractHandler {
             } finally {
                 closeFilesInputStreams(files);
             }
-        } catch (InvalidLocationException e) {
+        } catch (InvalidRequestException e) {
             logger.warning(e.getMessage());
             setResponseError(response, HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
         }
@@ -338,8 +344,8 @@ public class OcflHttp extends AbstractHandler {
                               HttpServletResponse response,
                               String objectId)
             throws IOException, ServletException {
-        var versionInfo = getVersionInfo(request);
         try {
+            var versionInfo = getVersionInfo(request);
             var renameInfo = getRenameInfo(request);
             if (renameInfo != null) {
                 var oldPath = renameInfo.get("old");
@@ -395,7 +401,7 @@ public class OcflHttp extends AbstractHandler {
             } finally {
                 closeFilesInputStreams(files);
             }
-        } catch (InvalidLocationException e) {
+        } catch (InvalidRequestException e) {
             logger.warning(e.getMessage());
             setResponseError(response, HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
         }
@@ -575,26 +581,30 @@ public class OcflHttp extends AbstractHandler {
         var method = request.getMethod();
         if (method.equals("DELETE")) {
             if (repo.containsObject(objectId)) {
-                var versionInfo = getVersionInfo(request);
-                var object = repo.getObject(ObjectVersionId.head(objectId));
-                if (object.containsFile(path)) {
-                    repo.updateObject(ObjectVersionId.head(objectId), versionInfo, updater -> {
-                        updater.removeFile(path);
-                    });
-                    response.setStatus(204);
-                } else {
-                    //see if the file was ever in the object
-                    var allObjectVersions = repo.describeObject(objectId).getVersionMap().values();
-                    for (VersionDetails v : allObjectVersions) {
-                        for (FileDetails f : v.getFiles()) {
-                            if (f.getPath().equals(path)) {
-                                response.setStatus(204);
-                                return;
+                try {
+                    var versionInfo = getVersionInfo(request);
+                    var object = repo.getObject(ObjectVersionId.head(objectId));
+                    if (object.containsFile(path)) {
+                        repo.updateObject(ObjectVersionId.head(objectId), versionInfo, updater -> {
+                            updater.removeFile(path);
+                        });
+                        response.setStatus(204);
+                    } else {
+                        //see if the file was ever in the object
+                        var allObjectVersions = repo.describeObject(objectId).getVersionMap().values();
+                        for (VersionDetails v : allObjectVersions) {
+                            for (FileDetails f : v.getFiles()) {
+                                if (f.getPath().equals(path)) {
+                                    response.setStatus(204);
+                                    return;
+                                }
                             }
                         }
+                        //file never existed, so return 404
+                        setResponseError(response, HttpServletResponse.SC_NOT_FOUND, path + " not found");
                     }
-                    //file never existed, so return 404
-                    setResponseError(response, HttpServletResponse.SC_NOT_FOUND, path + " not found");
+                } catch (InvalidRequestException e) {
+                    setResponseError(response, HttpServletResponse.SC_BAD_REQUEST, e.toString());
                 }
             } else {
                 setResponseError(response, HttpServletResponse.SC_NOT_FOUND, objectId + " not found");
