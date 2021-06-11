@@ -24,22 +24,20 @@ import java.util.logging.Logger;
 import javax.json.Json;
 import javax.json.JsonObject;
 import javax.json.JsonReader;
+
+import edu.wisc.library.ocfl.api.exception.*;
 import jakarta.servlet.MultipartConfigElement;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.Part;
 
-import edu.wisc.library.ocfl.api.exception.FixityCheckException;
-import edu.wisc.library.ocfl.api.exception.ObjectOutOfSyncException;
-import edu.wisc.library.ocfl.api.exception.OverwriteException;
 import edu.wisc.library.ocfl.api.io.FixityCheckInputStream;
 import edu.wisc.library.ocfl.api.model.*;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.AbstractHandler;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
-import edu.wisc.library.ocfl.api.exception.NotFoundException;
 import edu.wisc.library.ocfl.api.OcflRepository;
 import edu.wisc.library.ocfl.core.OcflRepositoryBuilder;
 import edu.wisc.library.ocfl.core.extension.storage.layout.config.HashedNTupleIdEncapsulationLayoutConfig;
@@ -790,9 +788,16 @@ public class OcflHttp extends AbstractHandler {
                     }
                 } catch (IllegalStateException e) {
                     var exceptionMsg = e.toString();
-                    logger.warning(exceptionMsg);
                     if (exceptionMsg.contains("Illegal character")) {
+                        logger.warning(exceptionMsg);
                         setResponseError(response, HttpServletResponse.SC_BAD_REQUEST, "invalid character in filename");
+                    } else {
+                        throw e;
+                    }
+                } catch (OcflJavaException e) {
+                    var exceptionMsg = e.toString();
+                    if (exceptionMsg.contains("MessageDigest not available")) {
+                        setResponseError(response, HttpServletResponse.SC_BAD_REQUEST, exceptionMsg.split(": ")[1]);
                     } else {
                         throw e;
                     }

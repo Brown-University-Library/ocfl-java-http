@@ -161,6 +161,40 @@ public class MultipleFilesUploadTest {
     }
 
     @Test
+    public void testInvalidChecksumType() throws Exception {
+        var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20multiple%20files&username=someone&useraddress=someone%40school.edu");
+        var file1Contents = "... contents of first file ...";
+        var multipartData = "--" + boundary + "\r\n" +
+                paramsContentDisposition + "\r\n" +
+                "\r\n" +
+                "{\"" + file1Name + "\": {\"checksumType\": \"SHA-890\", \"checksum\": \"abcd\"}}" + "\r\n" +
+                "--" + boundary + "\r\n" +
+                file1ContentDisposition + "\r\n" +
+                "\r\n" +
+                file1Contents + "\r\n" +
+                "--" + boundary + "--";
+        //test POST
+        var request = HttpRequest.newBuilder(uri)
+                .header("Content-Type", contentTypeHeader)
+                .POST(HttpRequest.BodyPublishers.ofString(multipartData)).build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(400, response.statusCode());
+        Assertions.assertEquals("SHA-890 MessageDigest not available", response.body());
+
+        //test PUT
+        ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
+            updater.writeFile(new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)), file1Name);
+        });
+        uri = URI.create("http://localhost:8000/" + objectId + "/files?updateExisting=true&message=adding%20multiple%20files&username=someone&useraddress=someone%40school.edu");
+        request = HttpRequest.newBuilder(uri)
+                .header("Content-Type", contentTypeHeader)
+                .PUT(HttpRequest.BodyPublishers.ofString(multipartData)).build();
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        Assertions.assertEquals(400, response.statusCode());
+        Assertions.assertEquals("SHA-890 MessageDigest not available", response.body());
+    }
+
+    @Test
     public void testInvalidChecksum() throws Exception {
         var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20multiple%20files&username=someone&useraddress=someone%40school.edu");
         var file1Contents = "... contents of first file ...";
