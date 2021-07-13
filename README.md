@@ -17,14 +17,14 @@ API
     - add objectTimestamps=true URL param to request object created/lastModified timestamps
     - returns {"version": "<head_version_number eg. v3", "object": {"created": "2020-11-20T20:30:43.73776Z", "lastModified": "2020-11-25T20:30:43.73776Z"}, files": {"file1": {"state": "A"}}} as JSON
     - returns 410 Gone if object has been deleted (ie. if all files have been removed from latest version)
+- url params for POST/PUT/DELETE
+    - message, userName, userAddress, created - these get added to OCFL version info (note: normally 'created' should not be used - it just defaults to now)
 - POST /<object_id>/files
-    - url params: message, userName, userAddress, created - these get added to OCFL version info (note: normally 'created' should not be used - it just defaults to now)
     - body: multipart/form-data
         - "params" field - JSON data in the form: {<filename>: {"checksum": <checksum>, "checksumType": "MD5"/"SHA-512"/..., "location": <file URI>}}
         - "files" field - 1 or more files to be added to the object
     - fails if the object already exists
 - PUT /<object_id>/files
-    - url params: message, userName, userAddress, created - these get added to OCFL version info (see note above on created param)
     - adding/updating files:
         - body: multipart/form-data (see description in POST section)
         - fails if the object doesn't exist or the files already exist

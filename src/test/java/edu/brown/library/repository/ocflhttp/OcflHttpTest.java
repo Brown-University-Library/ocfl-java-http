@@ -325,12 +325,18 @@ public class OcflHttpTest {
         });
         var files = ocflHttp.repo.getObject(ObjectVersionId.head(objectId)).getFiles();
         Assertions.assertFalse(files.isEmpty());
-        var url = "http://localhost:8000/" + encodedObjectId + "/files";
+        var url = "http://localhost:8000/" + encodedObjectId + "/files?message=delete%20object&userName=someone&userAddress=someone%40school.edu";
         var request = HttpRequest.newBuilder(URI.create(url)).DELETE().build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(204, response.statusCode());
-        files = ocflHttp.repo.getObject(ObjectVersionId.head(objectId)).getFiles();
+        var object = ocflHttp.repo.getObject(ObjectVersionId.head(objectId));
+        files = object.getFiles();
         Assertions.assertTrue(files.isEmpty());
+        var message = object.getVersionInfo().getMessage();
+        Assertions.assertEquals("delete object", message);
+        var user = object.getVersionInfo().getUser();
+        Assertions.assertEquals("someone", user.getName());
+        Assertions.assertEquals("someone@school.edu", user.getAddress());
     }
 
     @Test
@@ -579,13 +585,18 @@ public class OcflHttpTest {
         ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
             updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)),"file1");
         });
-        var url = "http://localhost:8000/" + encodedObjectId + "/files/file1";
+        var url = "http://localhost:8000/" + encodedObjectId + "/files/file1?message=delete%20file&userName=someone&userAddress=someone%40school.edu";
         var request = HttpRequest.newBuilder(URI.create(url)).DELETE().build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(204, response.statusCode());
         var object = ocflHttp.repo.getObject(ObjectVersionId.head(objectId));
         var files = object.getFiles();
         Assertions.assertTrue(files.isEmpty());
+        var message = object.getVersionInfo().getMessage();
+        Assertions.assertEquals("delete file", message);
+        var user = object.getVersionInfo().getUser();
+        Assertions.assertEquals("someone", user.getName());
+        Assertions.assertEquals("someone@school.edu", user.getAddress());
     }
 
     @Test

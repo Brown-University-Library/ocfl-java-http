@@ -669,7 +669,7 @@ public class MultipleFilesUploadTest {
         ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
             updater.writeFile(new ByteArrayInputStream("asdf".getBytes(StandardCharsets.UTF_8)), "file1.txt");
         });
-        var uri = URI.create("http://localhost:8000/" + encodedObjectId + "/files?message=adding%20multiple%20files&userName=someone&userAddress=someone%40school.edu");
+        var uri = URI.create("http://localhost:8000/" + encodedObjectId + "/files?message=renaming%20file1.txt&userName=someone&userAddress=someone%40school.edu");
         var multipartData = "--" + boundary + "\r\n" +
                 renameContentDisposition + "\r\n" +
                 "\r\n" +
@@ -689,5 +689,10 @@ public class MultipleFilesUploadTest {
         }
         //verify that this new file points to the old file1.txt on disk, since the contents are the same
         Assertions.assertTrue(file2doc.getStorageRelativePath().endsWith("v1/content/file1.txt"));
+        var message = object.getVersionInfo().getMessage();
+        Assertions.assertEquals("renaming file1.txt", message);
+        var user = object.getVersionInfo().getUser();
+        Assertions.assertEquals("someone", user.getName());
+        Assertions.assertEquals("someone@school.edu", user.getAddress());
     }
 }
