@@ -760,7 +760,6 @@ public class OcflHttp extends AbstractHandler {
                 }
                 var output = outputBuilder.build();
                 response.setStatus(HttpServletResponse.SC_OK);
-                response.addHeader("Accept-Ranges", "bytes");
                 response.setContentType("application/json");
                 var writer = Json.createWriter(response.getWriter());
                 writer.writeObject(output);

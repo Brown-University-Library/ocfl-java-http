@@ -172,7 +172,6 @@ public class OcflHttpTest {
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
         Assertions.assertEquals("application/json", response.headers().firstValue("Content-Type").get());
-        Assertions.assertEquals("bytes", response.headers().firstValue("Accept-Ranges").get());
         JsonObject responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
         Assertions.assertEquals("v1", responseJson.getString("version"));
         var filesJson = responseJson.getJsonObject("files");
