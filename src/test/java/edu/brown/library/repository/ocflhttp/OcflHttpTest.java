@@ -9,6 +9,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.text.Normalizer;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 
@@ -37,6 +38,8 @@ public class OcflHttpTest {
     String encodedObjectId = URLEncoder.encode(objectId, StandardCharsets.UTF_8);
     String fileName = "nâtiôn.txt";
     String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8);
+    String message = "“iñtërnâtiônàlĭzætiøn” message";
+    String messageNFC = Normalizer.normalize(message, Normalizer.Form.NFC);
 
     @BeforeEach
     private void setup() throws Exception {
@@ -110,7 +113,7 @@ public class OcflHttpTest {
     @Test
     public void testVersions() throws Exception {
         var versionInfo = new VersionInfo();
-        versionInfo.setMessage("test message");
+        versionInfo.setMessage(messageNFC);
         versionInfo.setUser("someone", "someone@school.edu");
         ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), versionInfo, updater -> {
             updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)),"file1");
@@ -122,9 +125,10 @@ public class OcflHttpTest {
         var request = HttpRequest.newBuilder(URI.create(url)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
+        Assertions.assertEquals("application/json", response.headers().firstValue("Content-Type").get());
         JsonObject responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
         Assertions.assertTrue(responseJson.getJsonObject("v1").getString("created").endsWith("Z"));
-        Assertions.assertEquals("test message", responseJson.getJsonObject("v1").getString("message"));
+        Assertions.assertEquals(messageNFC, responseJson.getJsonObject("v1").getString("message"));
         Assertions.assertEquals("someone <someone@school.edu>", responseJson.getJsonObject("v1").getString("user"));
         Assertions.assertTrue(responseJson.getJsonObject("v2").getString("created").endsWith("Z"));
         Assertions.assertEquals("", responseJson.getJsonObject("v2").getString("message"));
@@ -159,18 +163,20 @@ public class OcflHttpTest {
 
     @Test
     public void testGetFiles() throws Exception {
+        //write file to object, using messageNFC as the file name
         ocflHttp.repo.updateObject(ObjectVersionId.head(objectId), new VersionInfo(), updater -> {
-                updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)),"file1");
+                updater.writeFile(new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)), messageNFC);
         });
         var url = "http://localhost:8000/" + encodedObjectId + "/files";
         var request = HttpRequest.newBuilder(URI.create(url)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         Assertions.assertEquals(200, response.statusCode());
+        Assertions.assertEquals("application/json", response.headers().firstValue("Content-Type").get());
         Assertions.assertEquals("bytes", response.headers().firstValue("Accept-Ranges").get());
         JsonObject responseJson = Json.createReader(new ByteArrayInputStream(response.body().getBytes(StandardCharsets.UTF_8))).readObject();
         Assertions.assertEquals("v1", responseJson.getString("version"));
         var filesJson = responseJson.getJsonObject("files");
-        Assertions.assertEquals("{}", filesJson.getJsonObject("file1").toString());
+        Assertions.assertEquals("{}", filesJson.getJsonObject(messageNFC).toString());
         var objectJson = responseJson.getJsonObject(("object"));
         Assertions.assertNull(objectJson);
     }

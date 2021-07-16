@@ -46,6 +46,9 @@ public class MultipleFilesUploadTest {
     String paramsContentDisposition = "Content-Disposition: form-data; name=\"params\"";
     String file1ContentDisposition = "Content-Disposition: form-data; name=\"files\"; filename=\"" + file1NameNFC + "\"";
     String file2ContentDisposition = "Content-Disposition: form-data; name=\"files\"; filename=\"file2.txt\"";
+    String message = "“iñtërnâtiônàlĭzætiøn” message";
+    String messageNFC = Normalizer.normalize(message, Normalizer.Form.NFC);
+    String encodedMessageNFC = URLEncoder.encode(messageNFC, StandardCharsets.UTF_8);
 
     @BeforeEach
     private void setup() throws Exception {
@@ -295,7 +298,7 @@ public class MultipleFilesUploadTest {
 
     @Test
     public void testUploadMultipleFilesPostAndPut() throws Exception {
-        var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=adding%20multiple%20files&userName=someone&userAddress=someone%40school.edu");
+        var uri = URI.create("http://localhost:8000/" + objectId + "/files?message=" + encodedMessageNFC + "&userName=someone&userAddress=someone%40school.edu");
         var file1Contents = "... contents of first file ...";
         var file2Contents = "...contents of file2.txt...";
         var multipartData = "--" + boundary + "\r\n" +
@@ -325,7 +328,7 @@ public class MultipleFilesUploadTest {
         try (var stream = object.getFile("file2.txt").getStream()) {
             Assertions.assertEquals("...contents of file2.txt...", new String(stream.readAllBytes()));
         }
-        Assertions.assertEquals("adding multiple files", object.getVersionInfo().getMessage());
+        Assertions.assertEquals(messageNFC, object.getVersionInfo().getMessage());
         var user = object.getVersionInfo().getUser();
         Assertions.assertEquals("someone", user.getName());
         Assertions.assertEquals("someone@school.edu", user.getAddress());
